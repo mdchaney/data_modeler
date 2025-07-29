@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Navicat Data Model Viewer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 100%;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .controls {
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .controls button {
+            margin-right: 10px;
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .controls button:hover {
+            background: #0056b3;
+        }
+        #file-input {
+            margin-right: 10px;
+        }
+        #diagram-container {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ddd;
+            overflow: auto;
+            position: relative;
+            background: white;
+        }
+        svg {
+            width: 100%;
+            height: 100%;
+            min-width: 2000px;
+            min-height: 2000px;
+        }
+        .table-node {
+            cursor: move;
+            filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.2));
+        }
+        .table-node:hover {
+            filter: drop-shadow(3px 3px 6px rgba(0,0,0,0.3));
+        }
+        .table-header {
+            font-weight: bold;
+            font-size: 14px;
+        }
+        .table-field {
+            font-size: 12px;
+        }
+        .relationship-line {
+            fill: none;
+            stroke: #666;
+            stroke-width: 2;
+            marker-end: url(#arrowhead);
+        }
+        .relationship-label {
+            font-size: 11px;
+            fill: #666;
+        }
+        #info-panel {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            display: none;
+        }
+        .zoom-controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 5px;
+        }
+        .zoom-controls button {
+            width: 30px;
+            height: 30px;
+            margin: 2px;
+            border: 1px solid #ddd;
+            background: white;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        .zoom-controls button:hover {
+            background: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Navicat Data Model Viewer</h1>
+        
+        <div class="controls">
+            <input type="file" id="file-input" accept=".nmodel">
+            <button onclick="loadFile()">Load Model</button>
+            <button onclick="exportSVG()">Export as SVG</button>
+            <button onclick="exportPNG()">Export as PNG</button>
+        </div>
+        
+        <div id="diagram-container">
+            <div class="zoom-controls">
+                <button onclick="zoom(1.2)">+</button>
+                <button onclick="zoom(0.8)">-</button>
+                <button onclick="resetZoom()">⟲</button>
+            </div>
+            <svg id="diagram" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <marker id="arrowhead" markerWidth="10" markerHeight="10" 
+                            refX="9" refY="3" orient="auto">
+                        <polygon points="0 0, 10 3, 0 6" fill="#666" />
+                    </marker>
+                </defs>
+                <g id="zoom-group" transform="scale(1)">
+                    <g id="relationships"></g>
+                    <g id="tables"></g>
+                </g>
+            </svg>
+        </div>
+        
+        <div id="info-panel">
+            <h3>Table Information</h3>
+            <div id="info-content"></div>
+        </div>
+    </div>
+
+    <script>
+        let modelData = null;
+        let currentZoom = 1;
+        let draggedElement = null;
+        let dragOffset = { x: 0, y: 0 };
+
+        function loadFile() {
+            const fileInput = document.getElementById('file-input');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select a file');
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    modelData = JSON.parse(e.target.result);
+                    renderDiagram();
+                } catch (error) {
+                    alert('Error parsing file: ' + error.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function renderDiagram() {
+            if (!modelData || !modelData.ObjectJsons) return;
+            
+            const svg = document.getElementById('diagram');
+            const tablesGroup = document.getElementById('tables');
+            const relationshipsGroup = document.getElementById('relationships');
+            
+            // Clear existing content
+            tablesGroup.innerHTML = '';
+            relationshipsGroup.innerHTML = '';
+            
+            // Extract tables and their positions
+            const tables = {};
+            const tablePositions = {};
+            const relationships = [];
+            
+            for (const [uuid, objects] of Object.entries(modelData.ObjectJsons)) {
+                if (Array.isArray(objects)) {
+                    for (const obj of objects) {
+                        // Check if it's a table definition
+                        if (obj.ObjectTypeID && obj.ObjectTypeID.includes('TableNormal')) {
+                            tables[uuid] = {
+                                name: obj.ObjectName,
+                                fields: []
+                            };
+                        }
+                        
+                        // Check if it's a table with fields
+                        if (obj.TableCommon && obj.TableCommon.Fields) {
+                            if (tables[uuid]) {
+                                tables[uuid].fields = obj.TableCommon.Fields;
+                            }
+                        }
+                        
+                        // Check if it's a diagram object for a table
+                        if (obj.ObjectTypeID === 'MVDiagramModelObject_Table') {
+                            const refUUID = objects.find(o => o.RefUUID)?.RefUUID;
+                            if (refUUID) {
+                                tablePositions[refUUID] = {
+                                    x: obj.X || 100,
+                                    y: obj.Y || 100,
+                                    width: obj.Width || 200,
+                                    height: obj.Height || 150
+                                };
+                            }
+                        }
+                        
+                        // Check for table position in Rect
+                        if (obj.Rect) {
+                            const refUUID = objects.find(o => o.RefUUID)?.RefUUID;
+                            if (refUUID) {
+                                tablePositions[refUUID] = {
+                                    x: obj.Rect.X || 100,
+                                    y: obj.Rect.Y || 100,
+                                    width: obj.Rect.Width || 200,
+                                    height: obj.Rect.Height || 150
+                                };
+                            }
+                        }
+                        
+                        // Check if it's a relationship
+                        if (obj.ObjectTypeID === 'MVDiagramShape_Relation') {
+                            const relationData = objects.find(o => o.RelationCommon);
+                            if (relationData && relationData.LineCommon) {
+                                relationships.push({
+                                    name: obj.ObjectName,
+                                    vertices: relationData.LineCommon.Vertices,
+                                    connectInfos: relationData.LineCommon.ConnectInfos
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Render tables
+            let yOffset = 50;
+            let xOffset = 50;
+            for (const [uuid, table] of Object.entries(tables)) {
+                const position = tablePositions[uuid] || { 
+                    x: xOffset, 
+                    y: yOffset, 
+                    width: 200, 
+                    height: Math.max(150, 40 + table.fields.length * 20) 
+                };
+                
+                renderTable(uuid, table, position);
+                
+                if (!tablePositions[uuid]) {
+                    xOffset += 250;
+                    if (xOffset > 800) {
+                        xOffset = 50;
+                        yOffset += 200;
+                    }
+                }
+            }
+            
+            // Render relationships
+            relationships.forEach(rel => {
+                renderRelationship(rel);
+            });
+        }
+
+        function renderTable(uuid, table, position) {
+            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            g.setAttribute('class', 'table-node');
+            g.setAttribute('data-uuid', uuid);
+            g.setAttribute('transform', `translate(${position.x}, ${position.y})`);
+            
+            // Table background
+            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            rect.setAttribute('width', position.width);
+            rect.setAttribute('height', position.height);
+            rect.setAttribute('fill', '#f8f9fa');
+            rect.setAttribute('stroke', '#3788d8');
+            rect.setAttribute('stroke-width', '2');
+            rect.setAttribute('rx', '4');
+            g.appendChild(rect);
+            
+            // Table header
+            const headerBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            headerBg.setAttribute('width', position.width);
+            headerBg.setAttribute('height', '30');
+            headerBg.setAttribute('fill', '#3788d8');
+            headerBg.setAttribute('rx', '4');
+            g.appendChild(headerBg);
+            
+            const headerText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            headerText.setAttribute('x', position.width / 2);
+            headerText.setAttribute('y', '20');
+            headerText.setAttribute('text-anchor', 'middle');
+            headerText.setAttribute('fill', 'white');
+            headerText.setAttribute('class', 'table-header');
+            headerText.textContent = table.name;
+            g.appendChild(headerText);
+            
+            // Fields
+            let yPos = 45;
+            table.fields.forEach((field, index) => {
+                if (index < 10) { // Limit displayed fields
+                    const fieldText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    fieldText.setAttribute('x', '10');
+                    fieldText.setAttribute('y', yPos);
+                    fieldText.setAttribute('class', 'table-field');
+                    fieldText.textContent = `${field.Name}: ${field.Type}`;
+                    g.appendChild(fieldText);
+                    yPos += 18;
+                }
+            });
+            
+            if (table.fields.length > 10) {
+                const moreText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                moreText.setAttribute('x', '10');
+                moreText.setAttribute('y', yPos);
+                moreText.setAttribute('class', 'table-field');
+                moreText.setAttribute('fill', '#666');
+                moreText.textContent = `... ${table.fields.length - 10} more fields`;
+                g.appendChild(moreText);
+            }
+            
+            // Add drag functionality
+            g.addEventListener('mousedown', startDrag);
+            g.addEventListener('click', () => showTableInfo(uuid, table));
+            
+            document.getElementById('tables').appendChild(g);
+        }
+
+        function renderRelationship(rel) {
+            if (!rel.vertices || rel.vertices.length < 2) return;
+            
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            let d = `M ${rel.vertices[0].X} ${rel.vertices[0].Y}`;
+            
+            for (let i = 1; i < rel.vertices.length; i++) {
+                d += ` L ${rel.vertices[i].X} ${rel.vertices[i].Y}`;
+            }
+            
+            path.setAttribute('d', d);
+            path.setAttribute('class', 'relationship-line');
+            
+            document.getElementById('relationships').appendChild(path);
+            
+            // Add relationship label
+            if (rel.name) {
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                const midPoint = Math.floor(rel.vertices.length / 2);
+                text.setAttribute('x', rel.vertices[midPoint].X);
+                text.setAttribute('y', rel.vertices[midPoint].Y - 5);
+                text.setAttribute('class', 'relationship-label');
+                text.textContent = rel.name;
+                document.getElementById('relationships').appendChild(text);
+            }
+        }
+
+        function showTableInfo(uuid, table) {
+            const infoPanel = document.getElementById('info-panel');
+            const infoContent = document.getElementById('info-content');
+            
+            let html = `<h4>${table.name}</h4>`;
+            html += '<table style="width: 100%; border-collapse: collapse;">';
+            html += '<tr><th style="border: 1px solid #ddd; padding: 8px;">Field</th>';
+            html += '<th style="border: 1px solid #ddd; padding: 8px;">Type</th>';
+            html += '<th style="border: 1px solid #ddd; padding: 8px;">Nullable</th></tr>';
+            
+            table.fields.forEach(field => {
+                html += `<tr>`;
+                html += `<td style="border: 1px solid #ddd; padding: 8px;">${field.Name}</td>`;
+                html += `<td style="border: 1px solid #ddd; padding: 8px;">${field.Type}</td>`;
+                html += `<td style="border: 1px solid #ddd; padding: 8px;">${field.IsNullable ? 'Yes' : 'No'}</td>`;
+                html += `</tr>`;
+            });
+            
+            html += '</table>';
+            infoContent.innerHTML = html;
+            infoPanel.style.display = 'block';
+        }
+
+        function zoom(factor) {
+            currentZoom *= factor;
+            const zoomGroup = document.getElementById('zoom-group');
+            zoomGroup.setAttribute('transform', `scale(${currentZoom})`);
+        }
+
+        function resetZoom() {
+            currentZoom = 1;
+            const zoomGroup = document.getElementById('zoom-group');
+            zoomGroup.setAttribute('transform', 'scale(1)');
+        }
+
+        function startDrag(e) {
+            draggedElement = e.currentTarget;
+            const transform = draggedElement.getAttribute('transform');
+            const match = transform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+            const x = parseFloat(match[1]);
+            const y = parseFloat(match[2]);
+            
+            dragOffset.x = e.clientX - x;
+            dragOffset.y = e.clientY - y;
+            
+            document.addEventListener('mousemove', drag);
+            document.addEventListener('mouseup', endDrag);
+            e.preventDefault();
+        }
+
+        function drag(e) {
+            if (!draggedElement) return;
+            
+            const x = e.clientX - dragOffset.x;
+            const y = e.clientY - dragOffset.y;
+            
+            draggedElement.setAttribute('transform', `translate(${x}, ${y})`);
+        }
+
+        function endDrag() {
+            draggedElement = null;
+            document.removeEventListener('mousemove', drag);
+            document.removeEventListener('mouseup', endDrag);
+        }
+
+        function exportSVG() {
+            const svg = document.getElementById('diagram');
+            const svgData = new XMLSerializer().serializeToString(svg);
+            const blob = new Blob([svgData], { type: 'image/svg+xml' });
+            downloadFile(blob, 'diagram.svg');
+        }
+
+        function exportPNG() {
+            const svg = document.getElementById('diagram');
+            const svgData = new XMLSerializer().serializeToString(svg);
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+            
+            img.onload = function() {
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+                canvas.toBlob(blob => {
+                    downloadFile(blob, 'diagram.png');
+                });
+            };
+            
+            img.src = 'data:image/svg+xml;base64,' + btoa(svgData);
+        }
+
+        function downloadFile(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Auto-load if there's a default file
+        window.addEventListener('load', () => {
+            // You can implement auto-loading logic here if needed
+        });
+    </script>
+</body>
+</html>
