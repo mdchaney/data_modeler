@@ -75,6 +75,10 @@
             stroke-width: 2;
             marker-end: url(#arrowhead);
         }
+        .relationship-group:hover .relationship-line {
+            stroke: #333;
+            stroke-width: 3;
+        }
         .relationship-label {
             font-size: 11px;
             fill: #666;
@@ -159,6 +163,10 @@
                             refX="9" refY="3" orient="auto">
                         <polygon points="0 0, 10 3, 0 6" fill="#666" />
                     </marker>
+                    <marker id="arrowhead-start" markerWidth="10" markerHeight="10" 
+                            refX="1" refY="3" orient="auto">
+                        <polygon points="10 0, 0 3, 10 6" fill="#666" />
+                    </marker>
                     <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
                         <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#f0f0f0" stroke-width="1"/>
                     </pattern>
@@ -187,6 +195,7 @@
         let diagramInfo = {};
         let tablesMap = {}; // Map of table UUID to table schema
         let displayObjectsMap = {}; // Map of display UUID to display info
+        let layoutInfo = {}; // Map of UUID to layout position info
 
         function loadFile() {
             const fileInput = document.getElementById('file-input');
@@ -217,6 +226,7 @@
             tablesMap = {};
             displayObjectsMap = {};
             diagramInfo = {};
+            layoutInfo = {};
             
             // Find the MVDiagram object
             let mvDiagramUUID = null;
@@ -287,7 +297,6 @@
             }
             
             // Extract layout information from MVDiagram
-            const layoutInfo = {};
             
             // Debug: Let's see what's actually in mvDiagramData
             console.log('mvDiagramData structure:', mvDiagramData);
@@ -373,7 +382,7 @@
             
             let tablesRendered = 0;
             
-            // Render only the tables that are in the child objects list
+            // First render tables
             childObjectUUIDs.forEach(uuid => {
                 const displayObj = displayObjectsMap[uuid];
                 console.log(`Checking UUID ${uuid}:`, displayObj);
@@ -394,6 +403,19 @@
             });
             
             console.log(`Total tables rendered: ${tablesRendered}`);
+            
+            // Then render foreign key relationships
+            childObjectUUIDs.forEach(uuid => {
+                const layout = layoutInfo[uuid];
+                if (layout && layout.name && layout.name.startsWith('fk_')) {
+                    // This is a foreign key relationship
+                    // Find the actual relationship data
+                    const relationData = findRelationshipData(uuid);
+                    if (relationData) {
+                        renderRelationship(uuid, layout.name, relationData);
+                    }
+                }
+            });
         }
 
         function renderTable(uuid, table, position) {
@@ -475,6 +497,129 @@
             g.addEventListener('click', () => showTableInfo(uuid, table));
             
             document.getElementById('tables').appendChild(g);
+        }
+        
+        function findRelationshipData(uuid) {
+            // Look for the relationship object in the model data
+            const objects = modelData.ObjectJsons[uuid];
+            if (!objects) return null;
+            
+            // Find the object with LineCommon (contains vertices)
+            for (const obj of objects) {
+                if (obj.LineCommon && obj.LineCommon.Vertices) {
+                    return {
+                        vertices: obj.LineCommon.Vertices,
+                        connectInfos: obj.LineCommon.ConnectInfos || [],
+                        relationCommon: obj.RelationCommon || {},
+                        connectorCommon: obj.ConnectorCommon || {},
+                        arrowCommon: obj.ArrowCommon || {}
+                    };
+                }
+            }
+            return null;
+        }
+        
+        function renderRelationship(uuid, name, relData) {
+            if (!relData.vertices || relData.vertices.length < 2) return;
+            
+            // Get the layout info for this relationship
+            const layout = layoutInfo[uuid];
+            if (!layout || !layout.rect) {
+                console.warn(`No layout found for relationship ${name}`);
+                return;
+            }
+            
+            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            g.setAttribute('class', 'relationship-group');
+            g.setAttribute('data-uuid', uuid);
+            g.setAttribute('data-name', name);
+            
+            // The vertices are relative to the relationship's bounding box
+            const offsetX = layout.rect.X;
+            const offsetY = layout.rect.Y;
+            
+            // Create the path with absolute coordinates
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            let d = `M ${offsetX + relData.vertices[0].X} ${offsetY + relData.vertices[0].Y}`;
+            
+            for (let i = 1; i < relData.vertices.length; i++) {
+                d += ` L ${offsetX + relData.vertices[i].X} ${offsetY + relData.vertices[i].Y}`;
+            }
+            
+            path.setAttribute('d', d);
+            path.setAttribute('class', 'relationship-line');
+            path.setAttribute('data-uuid', uuid);
+            
+            // Add arrow markers based on ArrowCommon
+            if (relData.arrowCommon) {
+                if (relData.arrowCommon.BeginStyle && relData.arrowCommon.BeginStyle !== 'None') {
+                    path.setAttribute('marker-start', 'url(#arrowhead-start)');
+                }
+                if (relData.arrowCommon.EndStyle && relData.arrowCommon.EndStyle !== 'None') {
+                    path.setAttribute('marker-end', 'url(#arrowhead)');
+                }
+            }
+            
+            // Make the line clickable with a wider invisible stroke
+            const clickPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            clickPath.setAttribute('d', d);
+            clickPath.setAttribute('stroke', 'transparent');
+            clickPath.setAttribute('stroke-width', '10');
+            clickPath.setAttribute('fill', 'none');
+            clickPath.style.cursor = 'pointer';
+            
+            // Add click handler
+            clickPath.addEventListener('click', () => showRelationshipInfo(uuid, name, relData));
+            
+            g.appendChild(clickPath);
+            g.appendChild(path);
+            
+            // Debug: show bounding box
+            if (window.debugMode) {
+                const debugRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                debugRect.setAttribute('x', offsetX);
+                debugRect.setAttribute('y', offsetY);
+                debugRect.setAttribute('width', layout.rect.Width);
+                debugRect.setAttribute('height', layout.rect.Height);
+                debugRect.setAttribute('fill', 'none');
+                debugRect.setAttribute('stroke', 'red');
+                debugRect.setAttribute('stroke-width', '1');
+                debugRect.setAttribute('stroke-dasharray', '5,5');
+                g.appendChild(debugRect);
+            }
+            
+            document.getElementById('relationships').appendChild(g);
+        }
+        
+        function showRelationshipInfo(uuid, name, relData) {
+            const infoPanel = document.getElementById('info-panel');
+            const infoContent = document.getElementById('info-content');
+            
+            let html = `<h4>Relationship: ${name}</h4>`;
+            html += `<p><strong>UUID:</strong> ${uuid}</p>`;
+            
+            if (relData.connectInfos && relData.connectInfos.length > 0) {
+                html += '<p><strong>Connections:</strong></p>';
+                html += '<ul>';
+                relData.connectInfos.forEach((conn, idx) => {
+                    const tableObj = displayObjectsMap[conn.RefUUID];
+                    const tableName = tableObj ? tableObj.name : 'Unknown';
+                    html += `<li>Connection ${idx + 1}: ${tableName} (UUID: ${conn.RefUUID}, Index: ${conn.Index})</li>`;
+                });
+                html += '</ul>';
+            }
+            
+            if (relData.connectorCommon) {
+                html += `<p><strong>Connector Type:</strong> ${relData.connectorCommon.Type || 'Unknown'}</p>`;
+                html += `<p><strong>Start Axis:</strong> ${relData.connectorCommon.StartAxis || 'Unknown'}</p>`;
+            }
+            
+            if (relData.arrowCommon) {
+                html += `<p><strong>Arrow Style:</strong> Begin: ${relData.arrowCommon.BeginStyle || 'None'}, End: ${relData.arrowCommon.EndStyle || 'None'}</p>`;
+            }
+            
+            infoContent.innerHTML = html;
+            infoPanel.style.display = 'block';
         }
 
         function showTableInfo(uuid, table) {
