@@ -121,6 +121,7 @@
             <button onclick="loadFile()">Load Model</button>
             <button onclick="exportSVG()">Export as SVG</button>
             <button onclick="exportPNG()">Export as PNG</button>
+            <span id="version-info" style="float: right; color: #666;"></span>
         </div>
         
         <div id="diagram-container">
@@ -179,6 +180,12 @@
         function renderDiagram() {
             if (!modelData || !modelData.ObjectJsons) return;
             
+            const metaVersion = modelData.MetaVersion;
+            console.log('MetaVersion:', metaVersion);
+            
+            // Display version info
+            document.getElementById('version-info').textContent = `MetaVersion: ${metaVersion}`;
+            
             const svg = document.getElementById('diagram');
             const tablesGroup = document.getElementById('tables');
             const relationshipsGroup = document.getElementById('relationships');
@@ -194,12 +201,27 @@
             
             for (const [uuid, objects] of Object.entries(modelData.ObjectJsons)) {
                 if (Array.isArray(objects)) {
+                    // Find the meta object to check version
+                    const metaObj = objects.find(obj => obj._META_ === true);
+                    const objectVersion = metaObj?.ObjectVersion;
+                    
+                    // Check if this object's version matches the MetaVersion
+                    const versionMatches = objectVersion === metaVersion;
+                    
                     for (const obj of objects) {
+                        // Skip objects that don't match version
+                        const objVersion = obj._VERSION_ || objectVersion;
+                        if (objVersion && objVersion !== metaVersion) {
+                            console.log(`Skipping object with version ${objVersion} (MetaVersion: ${metaVersion})`);
+                            continue;
+                        }
+                        
                         // Check if it's a table definition
                         if (obj.ObjectTypeID && obj.ObjectTypeID.includes('TableNormal')) {
                             tables[uuid] = {
                                 name: obj.ObjectName,
-                                fields: []
+                                fields: [],
+                                version: objectVersion
                             };
                         }
                         
@@ -211,7 +233,7 @@
                         }
                         
                         // Check if it's a diagram object for a table
-                        if (obj.ObjectTypeID === 'MVDiagramModelObject_Table') {
+                        if (obj.ObjectTypeID === 'MVDiagramModelObject_Table' && versionMatches) {
                             const refUUID = objects.find(o => o.RefUUID)?.RefUUID;
                             if (refUUID) {
                                 tablePositions[refUUID] = {
@@ -224,7 +246,7 @@
                         }
                         
                         // Check for table position in Rect
-                        if (obj.Rect) {
+                        if (obj.Rect && versionMatches) {
                             const refUUID = objects.find(o => o.RefUUID)?.RefUUID;
                             if (refUUID) {
                                 tablePositions[refUUID] = {
@@ -237,7 +259,7 @@
                         }
                         
                         // Check if it's a relationship
-                        if (obj.ObjectTypeID === 'MVDiagramShape_Relation') {
+                        if (obj.ObjectTypeID === 'MVDiagramShape_Relation' && versionMatches) {
                             const relationData = objects.find(o => o.RelationCommon);
                             if (relationData && relationData.LineCommon) {
                                 relationships.push({
