@@ -155,6 +155,7 @@
         let currentZoom = 1;
         let draggedElement = null;
         let dragOffset = { x: 0, y: 0 };
+        let tablesData = {}; // Store tables data globally for click handlers
 
         function loadFile() {
             const fileInput = document.getElementById('file-input');
@@ -273,6 +274,9 @@
                 }
             }
             
+            // Store tables data globally
+            tablesData = tables;
+            
             // Render tables
             let yOffset = 50;
             let xOffset = 50;
@@ -360,7 +364,7 @@
             
             // Add drag functionality
             g.addEventListener('mousedown', startDrag);
-            g.addEventListener('click', () => showTableInfo(uuid, table));
+            g.addEventListener('click', () => showTableInfo(uuid, tablesData[uuid] || table));
             
             document.getElementById('tables').appendChild(g);
         }
@@ -397,20 +401,26 @@
             const infoContent = document.getElementById('info-content');
             
             let html = `<h4>${table.name}</h4>`;
-            html += '<table style="width: 100%; border-collapse: collapse;">';
-            html += '<tr><th style="border: 1px solid #ddd; padding: 8px;">Field</th>';
-            html += '<th style="border: 1px solid #ddd; padding: 8px;">Type</th>';
-            html += '<th style="border: 1px solid #ddd; padding: 8px;">Nullable</th></tr>';
             
-            table.fields.forEach(field => {
-                html += `<tr>`;
-                html += `<td style="border: 1px solid #ddd; padding: 8px;">${field.Name}</td>`;
-                html += `<td style="border: 1px solid #ddd; padding: 8px;">${field.Type}</td>`;
-                html += `<td style="border: 1px solid #ddd; padding: 8px;">${field.IsNullable ? 'Yes' : 'No'}</td>`;
-                html += `</tr>`;
-            });
+            if (table.fields && table.fields.length > 0) {
+                html += '<table style="width: 100%; border-collapse: collapse;">';
+                html += '<tr><th style="border: 1px solid #ddd; padding: 8px;">Field</th>';
+                html += '<th style="border: 1px solid #ddd; padding: 8px;">Type</th>';
+                html += '<th style="border: 1px solid #ddd; padding: 8px;">Nullable</th></tr>';
+                
+                table.fields.forEach(field => {
+                    html += `<tr>`;
+                    html += `<td style="border: 1px solid #ddd; padding: 8px;">${field.Name}</td>`;
+                    html += `<td style="border: 1px solid #ddd; padding: 8px;">${field.Type}</td>`;
+                    html += `<td style="border: 1px solid #ddd; padding: 8px;">${field.IsNullable ? 'Yes' : 'No'}</td>`;
+                    html += `</tr>`;
+                });
+                
+                html += '</table>';
+            } else {
+                html += '<p>No field information available for this table.</p>';
+            }
             
-            html += '</table>';
             infoContent.innerHTML = html;
             infoPanel.style.display = 'block';
         }
