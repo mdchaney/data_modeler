@@ -246,13 +246,12 @@
                 if (obj.PagesSize) {
                     diagramInfo.pagesSize = obj.PagesSize;
                 }
-                if (obj.Layout) {
-                    diagramInfo.layout = obj.Layout;
-                }
             }
             
             // Get list of child objects to display
             const childObjectUUIDs = mvDiagramData.find(obj => obj._META_)?.ChildObjectUUIDs || [];
+            console.log('MVDiagram UUID:', mvDiagramUUID);
+            console.log('Child UUIDs count:', childObjectUUIDs.length);
             
             // Parse all objects first to build our maps
             for (const [uuid, objects] of Object.entries(modelData.ObjectJsons)) {
@@ -281,6 +280,7 @@
                                 refUUID: refObj.RefUUID,
                                 uuid: uuid
                             };
+                            console.log(`Found display object: ${metaObj.ObjectName} (${uuid}) -> ${refObj.RefUUID}`);
                         }
                     }
                 }
@@ -288,17 +288,44 @@
             
             // Extract layout information from MVDiagram
             const layoutInfo = {};
-            const layoutObj = mvDiagramData.find(obj => obj.Layout);
-            if (layoutObj && layoutObj.Layout) {
-                layoutObj.Layout.forEach(item => {
-                    if (item.RefUUID) {
-                        layoutInfo[item.RefUUID] = {
-                            name: item.Name,
-                            rect: item.Rect
-                        };
+            
+            // Debug: Let's see what's actually in mvDiagramData
+            console.log('mvDiagramData structure:', mvDiagramData);
+            
+            // The layout info should be in one of the objects
+            // Let's check each object more carefully
+            for (let i = 0; i < mvDiagramData.length; i++) {
+                const obj = mvDiagramData[i];
+                if (obj && typeof obj === 'object') {
+                    console.log(`mvDiagramData[${i}] keys:`, Object.keys(obj));
+                    
+                    // Check if this object has a property that's an array
+                    for (const [key, value] of Object.entries(obj)) {
+                        if (Array.isArray(value) && value.length > 0) {
+                            console.log(`  Found array property '${key}' with ${value.length} items`);
+                            // Check first item to see if it has layout properties
+                            if (value[0] && typeof value[0] === 'object') {
+                                console.log(`    First item keys:`, Object.keys(value[0]));
+                                if (value[0].RefUUID && value[0].Rect) {
+                                    console.log(`    This looks like layout data!`);
+                                    // Extract layout info
+                                    value.forEach(item => {
+                                        if (item.RefUUID && item.Rect) {
+                                            layoutInfo[item.RefUUID] = {
+                                                name: item.Name,
+                                                rect: item.Rect
+                                            };
+                                        }
+                                    });
+                                    break;
+                                }
+                            }
+                        }
                     }
-                });
+                }
             }
+            
+            console.log('Layout info extracted:', Object.keys(layoutInfo).length, 'items');
             
             // Set up the SVG dimensions
             setupSVGDimensions();
@@ -340,19 +367,33 @@
             tablesGroup.innerHTML = '';
             relationshipsGroup.innerHTML = '';
             
+            console.log('Child Object UUIDs:', childObjectUUIDs.length);
+            console.log('Layout Info:', Object.keys(layoutInfo).length);
+            console.log('Display Objects Map:', displayObjectsMap);
+            
+            let tablesRendered = 0;
+            
             // Render only the tables that are in the child objects list
             childObjectUUIDs.forEach(uuid => {
                 const displayObj = displayObjectsMap[uuid];
+                console.log(`Checking UUID ${uuid}:`, displayObj);
+                
                 if (displayObj && !displayObj.name.startsWith('fk_')) {
                     // This is a table display object
                     const tableSchema = tablesMap[displayObj.refUUID];
                     const layout = layoutInfo[uuid];
                     
+                    console.log(`  Table Schema:`, tableSchema?.name);
+                    console.log(`  Layout:`, layout);
+                    
                     if (tableSchema && layout) {
                         renderTable(uuid, tableSchema, layout.rect);
+                        tablesRendered++;
                     }
                 }
             });
+            
+            console.log(`Total tables rendered: ${tablesRendered}`);
         }
 
         function renderTable(uuid, table, position) {
