@@ -196,6 +196,8 @@
         let tablesMap = {}; // Map of table UUID to table schema
         let displayObjectsMap = {}; // Map of display UUID to display info
         let layoutInfo = {}; // Map of UUID to layout position info
+        let relationshipsMap = {}; // Map of relationship UUID to relationship data
+        let tableRelationships = {}; // Map of table UUID to connected relationship UUIDs
 
         function loadFile() {
             const fileInput = document.getElementById('file-input');
@@ -227,6 +229,8 @@
             displayObjectsMap = {};
             diagramInfo = {};
             layoutInfo = {};
+            relationshipsMap = {};
+            tableRelationships = {};
             
             // Find the MVDiagram object
             let mvDiagramUUID = null;
@@ -412,6 +416,24 @@
                     // Find the actual relationship data
                     const relationData = findRelationshipData(uuid);
                     if (relationData) {
+                        // Store relationship data
+                        relationshipsMap[uuid] = {
+                            uuid: uuid,
+                            name: layout.name,
+                            data: relationData,
+                            layout: layout
+                        };
+                        
+                        // Track which tables this relationship connects
+                        if (relationData.connectInfos) {
+                            relationData.connectInfos.forEach(conn => {
+                                if (!tableRelationships[conn.RefUUID]) {
+                                    tableRelationships[conn.RefUUID] = [];
+                                }
+                                tableRelationships[conn.RefUUID].push(uuid);
+                            });
+                        }
+                        
                         renderRelationship(uuid, layout.name, relationData);
                     }
                 }
@@ -735,6 +757,136 @@
             const y = (svgP.y / currentZoom) - dragOffset.y;
             
             draggedElement.setAttribute('transform', `translate(${x}, ${y})`);
+            
+            // Update connected relationships
+            const tableUUID = draggedElement.getAttribute('data-uuid');
+            updateConnectedRelationships(tableUUID, x, y);
+        }
+
+        function updateConnectedRelationships(tableUUID, x, y) {
+            // Get all relationships connected to this table
+            const connectedRelationships = tableRelationships[tableUUID] || [];
+            
+            connectedRelationships.forEach(relUUID => {
+                const relData = relationshipsMap[relUUID];
+                if (!relData) return;
+                
+                // Find the relationship SVG element
+                const relGroup = document.querySelector(`g[data-uuid="${relUUID}"]`);
+                if (!relGroup) return;
+                
+                // Get the path element
+                const path = relGroup.querySelector('path.relationship-line');
+                const clickPath = relGroup.querySelector('path[stroke="transparent"]');
+                if (!path) return;
+                
+                // Recalculate the path based on current table positions
+                const newPath = recalculateRelationshipPath(relUUID, relData);
+                if (newPath) {
+                    path.setAttribute('d', newPath);
+                    if (clickPath) {
+                        clickPath.setAttribute('d', newPath);
+                    }
+                }
+            });
+        }
+        
+        function recalculateRelationshipPath(relUUID, relData) {
+            if (!relData.data.vertices || relData.data.vertices.length < 2) return null;
+            
+            // Get the connected tables' current positions
+            const connectInfos = relData.data.connectInfos || [];
+            if (connectInfos.length < 2) return null;
+            
+            // Get current positions of connected tables
+            const table1UUID = connectInfos[0].RefUUID;
+            const table2UUID = connectInfos[1].RefUUID;
+            
+            const table1Element = document.querySelector(`g[data-uuid="${table1UUID}"]`);
+            const table2Element = document.querySelector(`g[data-uuid="${table2UUID}"]`);
+            
+            if (!table1Element || !table2Element) return null;
+            
+            // Extract current positions from transform
+            const getPosition = (element) => {
+                const transform = element.getAttribute('transform');
+                const match = transform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+                if (!match) return { x: 0, y: 0 };
+                return {
+                    x: parseFloat(match[1]),
+                    y: parseFloat(match[2])
+                };
+            };
+            
+            const pos1 = getPosition(table1Element);
+            const pos2 = getPosition(table2Element);
+            
+            // Get table dimensions from the layout info
+            const layout1 = layoutInfo[table1UUID];
+            const layout2 = layoutInfo[table2UUID];
+            
+            if (!layout1 || !layout2) return null;
+            
+            // Calculate the center points of the tables
+            const center1 = {
+                x: pos1.x + layout1.rect.Width / 2,
+                y: pos1.y + layout1.rect.Height / 2
+            };
+            
+            const center2 = {
+                x: pos2.x + layout2.rect.Width / 2,
+                y: pos2.y + layout2.rect.Height / 2
+            };
+            
+            // For now, create a simple line between table centers
+            // In a more sophisticated implementation, we would use the connection indices
+            // to determine which edge of each table to connect to
+            const vertices = relData.data.vertices;
+            
+            // Calculate the bounding box of the original relationship
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            vertices.forEach(v => {
+                minX = Math.min(minX, v.X);
+                minY = Math.min(minY, v.Y);
+                maxX = Math.max(maxX, v.X);
+                maxY = Math.max(maxY, v.Y);
+            });
+            
+            const origWidth = maxX - minX;
+            const origHeight = maxY - minY;
+            
+            // Calculate new bounding box based on table positions
+            const newMinX = Math.min(center1.x, center2.x) - 50;
+            const newMinY = Math.min(center1.y, center2.y) - 50;
+            const newMaxX = Math.max(center1.x, center2.x) + 50;
+            const newMaxY = Math.max(center1.y, center2.y) + 50;
+            
+            const newWidth = newMaxX - newMinX;
+            const newHeight = newMaxY - newMinY;
+            
+            // Scale and translate the vertices
+            const scaleX = origWidth > 0 ? newWidth / origWidth : 1;
+            const scaleY = origHeight > 0 ? newHeight / origHeight : 1;
+            
+            // Build the new path
+            let d = '';
+            vertices.forEach((v, i) => {
+                // Normalize vertex position (0-1 range)
+                const normX = origWidth > 0 ? (v.X - minX) / origWidth : 0.5;
+                const normY = origHeight > 0 ? (v.Y - minY) / origHeight : 0.5;
+                
+                // Apply to new bounding box
+                const newX = newMinX + normX * newWidth;
+                const newY = newMinY + normY * newHeight;
+                
+                if (i === 0) {
+                    d = `M ${newX} ${newY}`;
+                } else {
+                    d += ` L ${newX} ${newY}`;
+                }
+            });
+            
+            return d;
         }
 
         function endDrag() {
