@@ -541,6 +541,49 @@
             return null;
         }
         
+        function generateElbowPath(vertices, offsetX, offsetY, startAxis) {
+            if (vertices.length < 2) return '';
+            
+            // Convert control points to absolute positions
+            const points = vertices.map(v => ({
+                x: offsetX + v.X,
+                y: offsetY + v.Y
+            }));
+            
+            // Start with the first point
+            let path = `M ${points[0].x} ${points[0].y}`;
+            
+            // For elbow connectors, we need to create horizontal/vertical segments
+            // that pass through each control point
+            let isHorizontal = startAxis === 'Horizontal';
+            
+            for (let i = 1; i < points.length; i++) {
+                const prev = points[i - 1];
+                const curr = points[i];
+                
+                if (isHorizontal) {
+                    // Move horizontally to the x coordinate of the current point
+                    path += ` L ${curr.x} ${prev.y}`;
+                    // Then move vertically to reach the current point
+                    if (prev.y !== curr.y) {
+                        path += ` L ${curr.x} ${curr.y}`;
+                    }
+                } else {
+                    // Move vertically to the y coordinate of the current point
+                    path += ` L ${prev.x} ${curr.y}`;
+                    // Then move horizontally to reach the current point
+                    if (prev.x !== curr.x) {
+                        path += ` L ${curr.x} ${curr.y}`;
+                    }
+                }
+                
+                // Toggle direction for next segment
+                isHorizontal = !isHorizontal;
+            }
+            
+            return path;
+        }
+        
         function renderRelationship(uuid, name, relData) {
             if (!relData.vertices || relData.vertices.length < 2) return;
             
@@ -560,12 +603,20 @@
             const offsetX = layout.rect.X;
             const offsetY = layout.rect.Y;
             
-            // Create the path with absolute coordinates
+            // Create the path based on connector type
             const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            let d = `M ${offsetX + relData.vertices[0].X} ${offsetY + relData.vertices[0].Y}`;
+            let d = '';
             
-            for (let i = 1; i < relData.vertices.length; i++) {
-                d += ` L ${offsetX + relData.vertices[i].X} ${offsetY + relData.vertices[i].Y}`;
+            if (relData.connectorCommon && relData.connectorCommon.Type === 'Elbow') {
+                // Generate elbow connector path
+                d = generateElbowPath(relData.vertices, offsetX, offsetY, 
+                                    relData.connectorCommon.StartAxis || 'Horizontal');
+            } else {
+                // Default to straight lines through vertices
+                d = `M ${offsetX + relData.vertices[0].X} ${offsetY + relData.vertices[0].Y}`;
+                for (let i = 1; i < relData.vertices.length; i++) {
+                    d += ` L ${offsetX + relData.vertices[i].X} ${offsetY + relData.vertices[i].Y}`;
+                }
             }
             
             path.setAttribute('d', d);
@@ -870,21 +921,42 @@
             
             // Build the new path
             let d = '';
-            vertices.forEach((v, i) => {
-                // Normalize vertex position (0-1 range)
-                const normX = origWidth > 0 ? (v.X - minX) / origWidth : 0.5;
-                const normY = origHeight > 0 ? (v.Y - minY) / origHeight : 0.5;
+            
+            // Check if this is an elbow connector
+            if (relData.data.connectorCommon && relData.data.connectorCommon.Type === 'Elbow') {
+                // Transform vertices and generate elbow path
+                const transformedVertices = vertices.map(v => {
+                    // Normalize vertex position (0-1 range)
+                    const normX = origWidth > 0 ? (v.X - minX) / origWidth : 0.5;
+                    const normY = origHeight > 0 ? (v.Y - minY) / origHeight : 0.5;
+                    
+                    // Apply to new bounding box
+                    return {
+                        X: normX * newWidth,
+                        Y: normY * newHeight
+                    };
+                });
                 
-                // Apply to new bounding box
-                const newX = newMinX + normX * newWidth;
-                const newY = newMinY + normY * newHeight;
-                
-                if (i === 0) {
-                    d = `M ${newX} ${newY}`;
-                } else {
-                    d += ` L ${newX} ${newY}`;
-                }
-            });
+                d = generateElbowPath(transformedVertices, newMinX, newMinY, 
+                                    relData.data.connectorCommon.StartAxis || 'Horizontal');
+            } else {
+                // Default to straight lines
+                vertices.forEach((v, i) => {
+                    // Normalize vertex position (0-1 range)
+                    const normX = origWidth > 0 ? (v.X - minX) / origWidth : 0.5;
+                    const normY = origHeight > 0 ? (v.Y - minY) / origHeight : 0.5;
+                    
+                    // Apply to new bounding box
+                    const newX = newMinX + normX * newWidth;
+                    const newY = newMinY + normY * newHeight;
+                    
+                    if (i === 0) {
+                        d = `M ${newX} ${newY}`;
+                    } else {
+                        d += ` L ${newX} ${newY}`;
+                    }
+                });
+            }
             
             return d;
         }
