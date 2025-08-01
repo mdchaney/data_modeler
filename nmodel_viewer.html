@@ -62,6 +62,22 @@
         .table-node:hover {
             filter: drop-shadow(3px 3px 6px rgba(0,0,0,0.3));
         }
+        .resize-handle {
+            fill: transparent;
+            stroke: none;
+            cursor: pointer;
+        }
+        .resize-handle:hover {
+            fill: rgba(0, 123, 255, 0.1);
+        }
+        .resize-n { cursor: n-resize; }
+        .resize-e { cursor: e-resize; }
+        .resize-s { cursor: s-resize; }
+        .resize-w { cursor: w-resize; }
+        .resize-ne { cursor: ne-resize; }
+        .resize-se { cursor: se-resize; }
+        .resize-sw { cursor: sw-resize; }
+        .resize-nw { cursor: nw-resize; }
         .table-header {
             font-weight: bold;
             font-size: 14px;
@@ -343,6 +359,10 @@
         let currentZoom = 1;
         let draggedElement = null;
         let dragOffset = { x: 0, y: 0 };
+        let resizingElement = null;
+        let resizeHandle = null;
+        let resizeStartPos = { x: 0, y: 0 };
+        let resizeStartSize = { width: 0, height: 0 };
         let diagramInfo = {};
         let tablesMap = {}; // Map of table UUID to table schema
         let displayObjectsMap = {}; // Map of display UUID to display info
@@ -691,9 +711,44 @@
                 g.appendChild(moreText);
             }
             
+            // Add resize handles
+            const handleSize = 8;
+            const handles = [
+                { class: 'resize-n', x: position.Width/2 - handleSize/2, y: -handleSize/2, width: handleSize, height: handleSize },
+                { class: 'resize-ne', x: position.Width - handleSize/2, y: -handleSize/2, width: handleSize, height: handleSize },
+                { class: 'resize-e', x: position.Width - handleSize/2, y: position.Height/2 - handleSize/2, width: handleSize, height: handleSize },
+                { class: 'resize-se', x: position.Width - handleSize/2, y: position.Height - handleSize/2, width: handleSize, height: handleSize },
+                { class: 'resize-s', x: position.Width/2 - handleSize/2, y: position.Height - handleSize/2, width: handleSize, height: handleSize },
+                { class: 'resize-sw', x: -handleSize/2, y: position.Height - handleSize/2, width: handleSize, height: handleSize },
+                { class: 'resize-w', x: -handleSize/2, y: position.Height/2 - handleSize/2, width: handleSize, height: handleSize },
+                { class: 'resize-nw', x: -handleSize/2, y: -handleSize/2, width: handleSize, height: handleSize }
+            ];
+            
+            handles.forEach(handle => {
+                const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                rect.setAttribute('class', `resize-handle ${handle.class}`);
+                rect.setAttribute('x', handle.x);
+                rect.setAttribute('y', handle.y);
+                rect.setAttribute('width', handle.width);
+                rect.setAttribute('height', handle.height);
+                rect.setAttribute('data-resize-type', handle.class.replace('resize-', ''));
+                rect.addEventListener('mousedown', (e) => startResize(e, uuid));
+                g.appendChild(rect);
+            });
+            
             // Add event handlers
-            g.addEventListener('mousedown', startDrag);
-            g.addEventListener('click', () => showTableInfo(uuid, table));
+            g.addEventListener('mousedown', (e) => {
+                // Only start drag if not clicking on a resize handle
+                if (!e.target.classList.contains('resize-handle')) {
+                    startDrag(e);
+                }
+            });
+            g.addEventListener('click', (e) => {
+                // Only show info if not clicking on a resize handle
+                if (!e.target.classList.contains('resize-handle')) {
+                    showTableInfo(uuid, table);
+                }
+            });
             
             document.getElementById('tables').appendChild(g);
         }
@@ -951,9 +1006,18 @@
         function startDrag(e) {
             if (e.target.tagName === 'text') return; // Don't drag when clicking text
             
-            draggedElement = e.currentTarget;
+            // Find the table group element
+            let tableGroup = e.target;
+            while (tableGroup && !tableGroup.classList.contains('table-node')) {
+                tableGroup = tableGroup.parentElement;
+            }
+            if (!tableGroup) return;
+            
+            draggedElement = tableGroup;
             const transform = draggedElement.getAttribute('transform');
             const match = transform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+            if (!match) return;
+            
             const x = parseFloat(match[1]);
             const y = parseFloat(match[2]);
             
@@ -1166,6 +1230,157 @@
             draggedElement = null;
             document.removeEventListener('mousemove', drag);
             document.removeEventListener('mouseup', endDrag);
+        }
+        
+        function startResize(e, uuid) {
+            e.stopPropagation();
+            e.preventDefault();
+            
+            resizingElement = e.currentTarget.parentElement;
+            resizeHandle = e.currentTarget.getAttribute('data-resize-type');
+            
+            const svg = document.getElementById('diagram');
+            const pt = svg.createSVGPoint();
+            pt.x = e.clientX;
+            pt.y = e.clientY;
+            const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+            
+            resizeStartPos.x = svgP.x / currentZoom;
+            resizeStartPos.y = svgP.y / currentZoom;
+            
+            // Get current size and position from layout info
+            const layout = layoutInfo[uuid];
+            if (layout && layout.rect) {
+                resizeStartSize.width = layout.rect.Width;
+                resizeStartSize.height = layout.rect.Height;
+                resizeStartSize.x = layout.rect.X;
+                resizeStartSize.y = layout.rect.Y;
+            }
+            
+            document.addEventListener('mousemove', resize);
+            document.addEventListener('mouseup', endResize);
+        }
+        
+        function resize(e) {
+            if (!resizingElement || !resizeHandle) return;
+            
+            const svg = document.getElementById('diagram');
+            const pt = svg.createSVGPoint();
+            pt.x = e.clientX;
+            pt.y = e.clientY;
+            const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+            
+            const currentX = svgP.x / currentZoom;
+            const currentY = svgP.y / currentZoom;
+            
+            const dx = currentX - resizeStartPos.x;
+            const dy = currentY - resizeStartPos.y;
+            
+            const uuid = resizingElement.getAttribute('data-uuid');
+            const layout = layoutInfo[uuid];
+            if (!layout || !layout.rect) return;
+            
+            let newWidth = resizeStartSize.width;
+            let newHeight = resizeStartSize.height;
+            let newX = resizeStartSize.x;
+            let newY = resizeStartSize.y;
+            
+            // Calculate new dimensions based on resize handle
+            switch(resizeHandle) {
+                case 'n':
+                    newY = resizeStartSize.y + dy;
+                    newHeight = resizeStartSize.height - dy;
+                    break;
+                case 'ne':
+                    newY = resizeStartSize.y + dy;
+                    newHeight = resizeStartSize.height - dy;
+                    newWidth = resizeStartSize.width + dx;
+                    break;
+                case 'e':
+                    newWidth = resizeStartSize.width + dx;
+                    break;
+                case 'se':
+                    newWidth = resizeStartSize.width + dx;
+                    newHeight = resizeStartSize.height + dy;
+                    break;
+                case 's':
+                    newHeight = resizeStartSize.height + dy;
+                    break;
+                case 'sw':
+                    newX = resizeStartSize.x + dx;
+                    newWidth = resizeStartSize.width - dx;
+                    newHeight = resizeStartSize.height + dy;
+                    break;
+                case 'w':
+                    newX = resizeStartSize.x + dx;
+                    newWidth = resizeStartSize.width - dx;
+                    break;
+                case 'nw':
+                    newX = resizeStartSize.x + dx;
+                    newY = resizeStartSize.y + dy;
+                    newWidth = resizeStartSize.width - dx;
+                    newHeight = resizeStartSize.height - dy;
+                    break;
+            }
+            
+            // Minimum size constraints
+            newWidth = Math.max(100, newWidth);
+            newHeight = Math.max(60, newHeight);
+            
+            // Update layout info temporarily
+            layout.rect.Width = newWidth;
+            layout.rect.Height = newHeight;
+            layout.rect.X = newX;
+            layout.rect.Y = newY;
+            
+            // Update visual elements only (don't re-render completely)
+            const backgroundRect = resizingElement.querySelector('rect');
+            if (backgroundRect) {
+                backgroundRect.setAttribute('width', newWidth);
+                backgroundRect.setAttribute('height', newHeight);
+            }
+            
+            // Update header background
+            const headerRect = resizingElement.querySelector('rect[fill="#333"]');
+            if (headerRect) {
+                headerRect.setAttribute('width', newWidth);
+            }
+            
+            // Update position if needed
+            if (newX !== resizeStartSize.x || newY !== resizeStartSize.y) {
+                resizingElement.setAttribute('transform', `translate(${newX}, ${newY})`);
+            }
+            
+            // Update clip path
+            const clipRect = resizingElement.querySelector('clipPath rect');
+            if (clipRect) {
+                clipRect.setAttribute('width', newWidth - 16);
+                clipRect.setAttribute('height', newHeight);
+            }
+        }
+        
+        function endResize() {
+            if (resizingElement) {
+                const uuid = resizingElement.getAttribute('data-uuid');
+                const layout = layoutInfo[uuid];
+                const tableSchema = tablesMap[displayObjectsMap[uuid].refUUID];
+                
+                if (tableSchema && layout) {
+                    // Remove the old element
+                    resizingElement.remove();
+                    
+                    // Re-render with final dimensions
+                    renderTable(uuid, tableSchema, layout.rect);
+                    
+                    // Update connected relationships
+                    updateConnectedRelationships(uuid);
+                }
+            }
+            
+            resizingElement = null;
+            resizeHandle = null;
+            document.removeEventListener('mousemove', resize);
+            document.removeEventListener('mouseup', endResize);
         }
 
         function exportSVG() {
