@@ -826,7 +826,7 @@
                 const relGroup = document.querySelector(`g[data-uuid="${relUUID}"]`);
                 if (!relGroup) return;
                 
-                // Get the path element
+                // Get the path elements
                 const path = relGroup.querySelector('path.relationship-line');
                 const clickPath = relGroup.querySelector('path[stroke="transparent"]');
                 if (!path) return;
@@ -845,11 +845,10 @@
         function recalculateRelationshipPath(relUUID, relData) {
             if (!relData.data.vertices || relData.data.vertices.length < 2) return null;
             
-            // Get the connected tables' current positions
+            // Get the connected tables' information
             const connectInfos = relData.data.connectInfos || [];
             if (connectInfos.length < 2) return null;
             
-            // Get current positions of connected tables
             const table1UUID = connectInfos[0].RefUUID;
             const table2UUID = connectInfos[1].RefUUID;
             
@@ -878,84 +877,109 @@
             
             if (!layout1 || !layout2) return null;
             
-            // Calculate the center points of the tables
+            // Calculate table centers
             const center1 = {
                 x: pos1.x + layout1.rect.Width / 2,
                 y: pos1.y + layout1.rect.Height / 2
             };
-            
             const center2 = {
                 x: pos2.x + layout2.rect.Width / 2,
                 y: pos2.y + layout2.rect.Height / 2
             };
             
-            // For now, create a simple line between table centers
-            // In a more sophisticated implementation, we would use the connection indices
-            // to determine which edge of each table to connect to
-            const vertices = relData.data.vertices;
+            // Determine the best sides to connect based on relative positions
+            const dx = center2.x - center1.x;
+            const dy = center2.y - center1.y;
             
-            // Calculate the bounding box of the original relationship
-            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-            vertices.forEach(v => {
-                minX = Math.min(minX, v.X);
-                minY = Math.min(minY, v.Y);
-                maxX = Math.max(maxX, v.X);
-                maxY = Math.max(maxY, v.Y);
-            });
+            let index1, index2;
             
-            const origWidth = maxX - minX;
-            const origHeight = maxY - minY;
+            // Choose connection sides based on which direction has the greater distance
+            if (Math.abs(dx) > Math.abs(dy)) {
+                // Horizontal relationship is dominant
+                if (dx > 0) {
+                    // Table 1 is to the left of Table 2
+                    index1 = 2; // Right side of table 1
+                    index2 = 0; // Left side of table 2
+                } else {
+                    // Table 1 is to the right of Table 2
+                    index1 = 0; // Left side of table 1
+                    index2 = 2; // Right side of table 2
+                }
+            } else {
+                // Vertical relationship is dominant
+                if (dy > 0) {
+                    // Table 1 is above Table 2
+                    index1 = 3; // Bottom of table 1
+                    index2 = 1; // Top of table 2
+                } else {
+                    // Table 1 is below Table 2
+                    index1 = 1; // Top of table 1
+                    index2 = 3; // Bottom of table 2
+                }
+            }
             
-            // Calculate new bounding box based on table positions
-            const newMinX = Math.min(center1.x, center2.x) - 50;
-            const newMinY = Math.min(center1.y, center2.y) - 50;
-            const newMaxX = Math.max(center1.x, center2.x) + 50;
-            const newMaxY = Math.max(center1.y, center2.y) + 50;
+            // Calculate connection points based on indices
+            // Index meanings: 0=left, 1=top, 2=right, 3=bottom
+            const getConnectionPoint = (pos, layout, index) => {
+                const rect = layout.rect;
+                const centerX = pos.x + rect.Width / 2;
+                const centerY = pos.y + rect.Height / 2;
+                
+                switch(index) {
+                    case 0: // Left
+                        return { x: pos.x, y: centerY };
+                    case 1: // Top
+                        return { x: centerX, y: pos.y };
+                    case 2: // Right
+                        return { x: pos.x + rect.Width, y: centerY };
+                    case 3: // Bottom
+                        return { x: centerX, y: pos.y + rect.Height };
+                    default: // Center as fallback
+                        return { x: centerX, y: centerY };
+                }
+            };
             
-            const newWidth = newMaxX - newMinX;
-            const newHeight = newMaxY - newMinY;
+            const point1 = getConnectionPoint(pos1, layout1, index1);
+            const point2 = getConnectionPoint(pos2, layout2, index2);
             
-            // Scale and translate the vertices
-            const scaleX = origWidth > 0 ? newWidth / origWidth : 1;
-            const scaleY = origHeight > 0 ? newHeight / origHeight : 1;
-            
-            // Build the new path
+            // For elbow connectors, create a simple path between the connection points
             let d = '';
             
-            // Check if this is an elbow connector
             if (relData.data.connectorCommon && relData.data.connectorCommon.Type === 'Elbow') {
-                // Transform vertices and generate elbow path
-                const transformedVertices = vertices.map(v => {
-                    // Normalize vertex position (0-1 range)
-                    const normX = origWidth > 0 ? (v.X - minX) / origWidth : 0.5;
-                    const normY = origHeight > 0 ? (v.Y - minY) / origHeight : 0.5;
-                    
-                    // Apply to new bounding box
-                    return {
-                        X: normX * newWidth,
-                        Y: normY * newHeight
-                    };
-                });
+                // Create elbow path based on the connection sides
+                d = `M ${point1.x} ${point1.y}`;
                 
-                d = generateElbowPath(transformedVertices, newMinX, newMinY, 
-                                    relData.data.connectorCommon.StartAxis || 'Horizontal');
+                // Determine path based on which sides are connected
+                if ((index1 === 0 || index1 === 2) && (index2 === 0 || index2 === 2)) {
+                    // Both connections are on left/right sides (horizontal)
+                    const midX = (point1.x + point2.x) / 2;
+                    d += ` L ${midX} ${point1.y}`;
+                    d += ` L ${midX} ${point2.y}`;
+                    d += ` L ${point2.x} ${point2.y}`;
+                } else if ((index1 === 1 || index1 === 3) && (index2 === 1 || index2 === 3)) {
+                    // Both connections are on top/bottom sides (vertical)
+                    const midY = (point1.y + point2.y) / 2;
+                    d += ` L ${point1.x} ${midY}`;
+                    d += ` L ${point2.x} ${midY}`;
+                    d += ` L ${point2.x} ${point2.y}`;
+                } else if (index1 === 0 || index1 === 2) {
+                    // First connection is horizontal, second is vertical
+                    const extendDist = 30; // Distance to extend before turning
+                    const extendX = index1 === 2 ? point1.x + extendDist : point1.x - extendDist;
+                    d += ` L ${extendX} ${point1.y}`;
+                    d += ` L ${extendX} ${point2.y}`;
+                    d += ` L ${point2.x} ${point2.y}`;
+                } else {
+                    // First connection is vertical, second is horizontal
+                    const extendDist = 30; // Distance to extend before turning
+                    const extendY = index1 === 3 ? point1.y + extendDist : point1.y - extendDist;
+                    d += ` L ${point1.x} ${extendY}`;
+                    d += ` L ${point2.x} ${extendY}`;
+                    d += ` L ${point2.x} ${point2.y}`;
+                }
             } else {
-                // Default to straight lines
-                vertices.forEach((v, i) => {
-                    // Normalize vertex position (0-1 range)
-                    const normX = origWidth > 0 ? (v.X - minX) / origWidth : 0.5;
-                    const normY = origHeight > 0 ? (v.Y - minY) / origHeight : 0.5;
-                    
-                    // Apply to new bounding box
-                    const newX = newMinX + normX * newWidth;
-                    const newY = newMinY + normY * newHeight;
-                    
-                    if (i === 0) {
-                        d = `M ${newX} ${newY}`;
-                    } else {
-                        d += ` L ${newX} ${newY}`;
-                    }
-                });
+                // Simple straight line
+                d = `M ${point1.x} ${point1.y} L ${point2.x} ${point2.y}`;
             }
             
             return d;
