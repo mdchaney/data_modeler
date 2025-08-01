@@ -136,6 +136,130 @@
             font-size: 12px;
             padding: 4px 8px;
         }
+        
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 600px;
+            max-width: 90%;
+            border-radius: 8px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover,
+        .close:focus {
+            color: black;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .field-list {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .field-item {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            align-items: center;
+        }
+        .field-item input,
+        .field-item select {
+            flex: 1;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+        .field-item button {
+            padding: 5px 10px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .field-item button:hover {
+            background: #c82333;
+        }
+        .add-field-btn {
+            width: 100%;
+            padding: 10px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 15px;
+        }
+        .add-field-btn:hover {
+            background: #218838;
+        }
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+        .modal-buttons button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .modal-buttons .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+        .modal-buttons .btn-primary:hover {
+            background: #0056b3;
+        }
+        .modal-buttons .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        .modal-buttons .btn-secondary:hover {
+            background: #545b62;
+        }
     </style>
 </head>
 <body>
@@ -145,6 +269,7 @@
         <div class="controls">
             <input type="file" id="file-input" accept=".nmodel">
             <button onclick="loadFile()">Load Model</button>
+            <button onclick="showAddTableDialog()">Add Table</button>
             <button onclick="exportSVG()">Export as SVG</button>
             <button onclick="exportPNG()">Export as PNG</button>
             <button id="show-debug" onclick="toggleDebug()">Show Debug Info</button>
@@ -184,6 +309,32 @@
         <div id="info-panel">
             <h3>Table Information</h3>
             <div id="info-content"></div>
+        </div>
+    </div>
+    
+    <!-- Add Table Modal -->
+    <div id="addTableModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeAddTableDialog()">&times;</span>
+            <h2>Add New Table</h2>
+            
+            <div class="form-group">
+                <label for="tableName">Table Name:</label>
+                <input type="text" id="tableName" placeholder="Enter table name (e.g., users)">
+            </div>
+            
+            <div class="form-group">
+                <label>Fields:</label>
+                <div id="fieldsList" class="field-list">
+                    <!-- Fields will be added here dynamically -->
+                </div>
+                <button class="add-field-btn" onclick="addFieldRow()">+ Add Field</button>
+            </div>
+            
+            <div class="modal-buttons">
+                <button class="btn-secondary" onclick="closeAddTableDialog()">Cancel</button>
+                <button class="btn-primary" onclick="createTable()">Create Table</button>
+            </div>
         </div>
     </div>
 
@@ -1029,6 +1180,232 @@
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
+        }
+        
+        // Table creation functions
+        function showAddTableDialog() {
+            document.getElementById('addTableModal').style.display = 'block';
+            document.getElementById('tableName').value = '';
+            document.getElementById('fieldsList').innerHTML = '';
+            // Add a default ID field
+            addFieldRow('id', 'INTEGER', false, true);
+        }
+        
+        function closeAddTableDialog() {
+            document.getElementById('addTableModal').style.display = 'none';
+        }
+        
+        // Close modal when clicking outside of it
+        window.onclick = function(event) {
+            const modal = document.getElementById('addTableModal');
+            if (event.target === modal) {
+                closeAddTableDialog();
+            }
+        }
+        
+        function addFieldRow(name = '', type = 'VARCHAR', nullable = true, isPrimary = false) {
+            const fieldsList = document.getElementById('fieldsList');
+            const fieldDiv = document.createElement('div');
+            fieldDiv.className = 'field-item';
+            
+            fieldDiv.innerHTML = `
+                <input type="text" placeholder="Field name" value="${name}" class="field-name">
+                <select class="field-type">
+                    <option value="INTEGER" ${type === 'INTEGER' ? 'selected' : ''}>INTEGER</option>
+                    <option value="VARCHAR" ${type === 'VARCHAR' ? 'selected' : ''}>VARCHAR</option>
+                    <option value="TEXT" ${type === 'TEXT' ? 'selected' : ''}>TEXT</option>
+                    <option value="DECIMAL" ${type === 'DECIMAL' ? 'selected' : ''}>DECIMAL</option>
+                    <option value="BOOLEAN" ${type === 'BOOLEAN' ? 'selected' : ''}>BOOLEAN</option>
+                    <option value="DATE" ${type === 'DATE' ? 'selected' : ''}>DATE</option>
+                    <option value="TIMESTAMP" ${type === 'TIMESTAMP' ? 'selected' : ''}>TIMESTAMP</option>
+                    <option value="JSON" ${type === 'JSON' ? 'selected' : ''}>JSON</option>
+                </select>
+                <label style="display: flex; align-items: center; margin: 0;">
+                    <input type="checkbox" ${!nullable ? 'checked' : ''} class="field-not-null" style="margin-right: 5px;">
+                    NOT NULL
+                </label>
+                <label style="display: flex; align-items: center; margin: 0;">
+                    <input type="checkbox" ${isPrimary ? 'checked' : ''} class="field-primary" style="margin-right: 5px;">
+                    PRIMARY
+                </label>
+                <button onclick="this.parentElement.remove()">Remove</button>
+            `;
+            
+            fieldsList.appendChild(fieldDiv);
+        }
+        
+        function generateUUID() {
+            // Generate a UUID v4
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0;
+                const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16).toUpperCase();
+            });
+        }
+        
+        function createTable() {
+            const tableName = document.getElementById('tableName').value.trim();
+            if (!tableName) {
+                alert('Please enter a table name');
+                return;
+            }
+            
+            // Collect fields
+            const fieldItems = document.querySelectorAll('.field-item');
+            const fields = [];
+            
+            fieldItems.forEach((item, index) => {
+                const name = item.querySelector('.field-name').value.trim();
+                const type = item.querySelector('.field-type').value;
+                const notNull = item.querySelector('.field-not-null').checked;
+                const isPrimary = item.querySelector('.field-primary').checked;
+                
+                if (name) {
+                    fields.push({
+                        uuid: generateUUID(),
+                        name: name,
+                        type: type,
+                        nullable: !notNull,
+                        isPrimary: isPrimary,
+                        order: index
+                    });
+                }
+            });
+            
+            if (fields.length === 0) {
+                alert('Please add at least one field');
+                return;
+            }
+            
+            // Create the table
+            const tableUUID = generateUUID();
+            const displayUUID = generateUUID();
+            
+            // Add to model data structure
+            if (!modelData) {
+                // Initialize minimal model data structure if not loaded
+                modelData = {
+                    ObjectJsons: {},
+                    MVDiagramData: {}
+                };
+            }
+            
+            // Create table schema object matching the expected format
+            const tableSchema = {
+                name: tableName,
+                fields: fields.map(f => ({
+                    Name: f.name,
+                    Type: f.type,
+                    IsNull: f.nullable ? "YES" : "NO",
+                    IsPrimary: f.isPrimary,
+                    OrderNum: f.order
+                })),
+                foreignKeys: []
+            };
+            
+            // Add to tablesMap
+            tablesMap[tableUUID] = tableSchema;
+            
+            // Find a good position for the new table
+            let x = 50;
+            let y = 50;
+            
+            // If there are existing tables, find the rightmost position
+            if (Object.keys(layoutInfo).length > 0) {
+                let maxX = 0;
+                let maxY = 0;
+                let rightmostY = 0;
+                
+                // Find the rightmost table
+                for (const [uuid, layout] of Object.entries(layoutInfo)) {
+                    if (layout.rect) {
+                        const rightEdge = layout.rect.X + layout.rect.Width;
+                        if (rightEdge > maxX) {
+                            maxX = rightEdge;
+                            rightmostY = layout.rect.Y;
+                        }
+                        maxY = Math.max(maxY, layout.rect.Y + layout.rect.Height);
+                    }
+                }
+                
+                // Place new table to the right of existing tables
+                x = maxX + 50;
+                y = rightmostY;
+                
+                // If it would be too far right, start a new row
+                const svg = document.getElementById('diagram');
+                const svgWidth = svg.clientWidth || 1200;
+                if (x + 200 > svgWidth) {
+                    x = 50;
+                    y = maxY + 50;
+                }
+            }
+            
+            // Ensure the table is within the current viewport
+            const container = document.getElementById('diagram-container');
+            const scrollLeft = container.scrollLeft;
+            const scrollTop = container.scrollTop;
+            const viewWidth = container.clientWidth;
+            const viewHeight = container.clientHeight;
+            
+            // Place it in the visible area if it would be outside
+            if (x < scrollLeft || x > scrollLeft + viewWidth - 250) {
+                x = scrollLeft + 50;
+            }
+            if (y < scrollTop || y > scrollTop + viewHeight - 200) {
+                y = scrollTop + 50;
+            }
+            
+            const displayObject = {
+                uuid: displayUUID,
+                name: tableName,
+                refUUID: tableUUID  // This links the display object to the table schema
+            };
+            
+            const layoutObject = {
+                name: tableName,
+                rect: {
+                    X: x,
+                    Y: y,
+                    Width: 200,
+                    Height: 100 + fields.length * 20
+                }
+            };
+            
+            // Add to display objects and layout info
+            displayObjectsMap[displayUUID] = displayObject;
+            layoutInfo[displayUUID] = layoutObject;
+            
+            // Render the new table
+            renderTable(displayUUID, tableSchema, layoutObject.rect);
+            
+            // Close dialog
+            closeAddTableDialog();
+            
+            // Scroll to the new table
+            // Center the new table in the viewport
+            const scrollX = Math.max(0, x - container.clientWidth / 2 + 100);
+            const scrollY = Math.max(0, y - container.clientHeight / 2 + 75);
+            container.scrollLeft = scrollX;
+            container.scrollTop = scrollY;
+            
+            // Highlight the new table briefly
+            const newTableElement = document.querySelector(`g[data-uuid="${displayUUID}"]`);
+            if (newTableElement) {
+                const rect = newTableElement.querySelector('rect');
+                if (rect) {
+                    const originalStroke = rect.getAttribute('stroke') || '#333';
+                    const originalStrokeWidth = rect.getAttribute('stroke-width') || '1';
+                    rect.setAttribute('stroke', '#007bff');
+                    rect.setAttribute('stroke-width', '3');
+                    
+                    // Reset after 2 seconds
+                    setTimeout(() => {
+                        rect.setAttribute('stroke', originalStroke);
+                        rect.setAttribute('stroke-width', originalStrokeWidth);
+                    }, 2000);
+                }
+            }
         }
     </script>
 </body>
