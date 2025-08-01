@@ -1,6 +1,6 @@
-# Navicat Data Model Viewer
+# Data Model Viewer
 
-A web-based viewer for Navicat Data Modeler (.nmodel) files that renders database schemas as interactive SVG diagrams.
+A web-based viewer for data model (.nmodel) files that renders database schemas as interactive SVG diagrams.
 
 ## Features
 
@@ -26,7 +26,7 @@ A web-based viewer for Navicat Data Modeler (.nmodel) files that renders databas
 
 ## Technical Details
 
-The viewer parses the JSON structure of Navicat .nmodel files, which contain:
+The viewer parses the JSON structure of .nmodel files, which contain:
 - Table definitions with fields and their properties
 - Diagram layout information with positions and dimensions
 - Relationship definitions between tables
