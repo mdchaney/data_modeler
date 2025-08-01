@@ -634,8 +634,28 @@
             
             // Show first few fields
             let yPos = 45;
-            const maxFieldsToShow = Math.floor((position.Height - 50) / 18);
+            // More accurate calculation: header takes ~35px, each field ~16px, leave 10px margin at bottom
+            const availableHeight = position.Height - 35 - 10;
+            const maxFieldsToShow = Math.floor(availableHeight / 16);
             const fieldsToShow = table.fields.slice(0, maxFieldsToShow);
+            
+            // Create a single clipPath for all fields
+            const fieldsClipId = `fields-clip-${uuid}`;
+            const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+            const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+            clipPath.setAttribute('id', fieldsClipId);
+            const clipRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            clipRect.setAttribute('x', '8');
+            clipRect.setAttribute('y', '0');
+            clipRect.setAttribute('width', position.Width - 16);
+            clipRect.setAttribute('height', position.Height);
+            clipPath.appendChild(clipRect);
+            defs.appendChild(clipPath);
+            g.appendChild(defs);
+            
+            // Create a group for all fields with clipping
+            const fieldsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            fieldsGroup.setAttribute('clip-path', `url(#${fieldsClipId})`);
             
             fieldsToShow.forEach((field, index) => {
                 const fieldText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
@@ -643,16 +663,21 @@
                 fieldText.setAttribute('y', yPos);
                 fieldText.setAttribute('class', 'table-field');
                 
-                // Truncate field display if needed
+                // For very long field names/types, we still need some truncation
                 const fieldDisplay = `${field.Name}: ${field.Type}`;
-                const maxLength = Math.floor((position.Width - 20) / 7);
-                fieldText.textContent = fieldDisplay.length > maxLength 
-                    ? fieldDisplay.substring(0, maxLength - 3) + '...' 
-                    : fieldDisplay;
+                const maxChars = Math.floor((position.Width - 20) / 6);
                 
-                g.appendChild(fieldText);
-                yPos += 18;
+                if (fieldDisplay.length > maxChars) {
+                    fieldText.textContent = fieldDisplay.substring(0, maxChars - 3) + '...';
+                } else {
+                    fieldText.textContent = fieldDisplay;
+                }
+                
+                fieldsGroup.appendChild(fieldText);
+                yPos += 16;
             });
+            
+            g.appendChild(fieldsGroup);
             
             if (table.fields.length > maxFieldsToShow) {
                 const moreText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
@@ -661,7 +686,8 @@
                 moreText.setAttribute('class', 'table-field');
                 moreText.setAttribute('fill', '#666');
                 moreText.setAttribute('font-style', 'italic');
-                moreText.textContent = `... ${table.fields.length - maxFieldsToShow} more fields`;
+                const remaining = table.fields.length - maxFieldsToShow;
+                moreText.textContent = `... ${remaining} more field${remaining !== 1 ? 's' : ''}`;
                 g.appendChild(moreText);
             }
             
