@@ -276,6 +276,39 @@
         .modal-buttons .btn-secondary:hover {
             background: #545b62;
         }
+        
+        /* Foreign Key Creation Mode */
+        .fk-creation-mode {
+            cursor: crosshair !important;
+        }
+        .fk-creation-mode * {
+            cursor: crosshair !important;
+        }
+        .field-bg.field-hover {
+            fill: rgba(0, 123, 255, 0.1);
+        }
+        .field-bg.field-selected {
+            fill: rgba(0, 123, 255, 0.3);
+        }
+        .fk-drag-line {
+            stroke: #007bff;
+            stroke-width: 2;
+            stroke-dasharray: 5,5;
+            fill: none;
+            pointer-events: none;
+        }
+        #fk-status {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 4px;
+            display: none;
+            z-index: 1000;
+        }
     </style>
 </head>
 <body>
@@ -286,6 +319,7 @@
             <input type="file" id="file-input" accept=".nmodel">
             <button onclick="loadFile()">Load Model</button>
             <button onclick="showAddTableDialog()">Add Table</button>
+            <button onclick="startAddForeignKey()">Add Foreign Key</button>
             <button onclick="exportSVG()">Export as SVG</button>
             <button onclick="exportPNG()">Export as PNG</button>
             <button id="show-debug" onclick="toggleDebug()">Show Debug Info</button>
@@ -353,6 +387,37 @@
             </div>
         </div>
     </div>
+    
+    <!-- Foreign Key Modal -->
+    <div id="addForeignKeyModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeForeignKeyDialog(); cancelForeignKeyCreation();">&times;</span>
+            <h2>Create Foreign Key</h2>
+            
+            <div class="form-group">
+                <label>From:</label>
+                <p id="fk-from-info" style="margin: 5px 0; font-weight: bold;"></p>
+            </div>
+            
+            <div class="form-group">
+                <label>To:</label>
+                <p id="fk-to-info" style="margin: 5px 0; font-weight: bold;"></p>
+            </div>
+            
+            <div class="form-group">
+                <label for="fkName">Foreign Key Name:</label>
+                <input type="text" id="fkName" placeholder="fk_table1_table2">
+            </div>
+            
+            <div class="modal-buttons">
+                <button class="btn-secondary" onclick="closeForeignKeyDialog(); cancelForeignKeyCreation();">Cancel</button>
+                <button class="btn-primary" onclick="createForeignKey()">Create Foreign Key</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Foreign Key Status -->
+    <div id="fk-status">Click on a field to start, then drag to another field</div>
 
     <script>
         let modelData = null;
@@ -369,6 +434,12 @@
         let layoutInfo = {}; // Map of UUID to layout position info
         let relationshipsMap = {}; // Map of relationship UUID to relationship data
         let tableRelationships = {}; // Map of table UUID to connected relationship UUIDs
+        
+        // Foreign key creation mode variables
+        let fkCreationMode = false;
+        let fkSourceField = null;
+        let fkTargetField = null;
+        let fkDragLine = null;
 
         function loadFile() {
             const fileInput = document.getElementById('file-input');
@@ -678,10 +749,28 @@
             fieldsGroup.setAttribute('clip-path', `url(#${fieldsClipId})`);
             
             fieldsToShow.forEach((field, index) => {
+                const fieldGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                fieldGroup.setAttribute('class', 'field-group');
+                fieldGroup.setAttribute('data-field-name', field.Name);
+                fieldGroup.setAttribute('data-field-type', field.Type);
+                fieldGroup.setAttribute('data-table-uuid', uuid);
+                fieldGroup.setAttribute('data-table-name', table.name);
+                
+                // Create invisible background rect for better click/hover detection
+                const fieldBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                fieldBg.setAttribute('x', '8');
+                fieldBg.setAttribute('y', yPos - 12);
+                fieldBg.setAttribute('width', position.Width - 16);
+                fieldBg.setAttribute('height', 16);
+                fieldBg.setAttribute('fill', 'transparent');
+                fieldBg.setAttribute('class', 'field-bg');
+                fieldGroup.appendChild(fieldBg);
+                
                 const fieldText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                 fieldText.setAttribute('x', '10');
                 fieldText.setAttribute('y', yPos);
                 fieldText.setAttribute('class', 'table-field');
+                fieldText.setAttribute('pointer-events', 'none'); // Let the background handle events
                 
                 // For very long field names/types, we still need some truncation
                 const fieldDisplay = `${field.Name}: ${field.Type}`;
@@ -693,7 +782,14 @@
                     fieldText.textContent = fieldDisplay;
                 }
                 
-                fieldsGroup.appendChild(fieldText);
+                fieldGroup.appendChild(fieldText);
+                
+                // Add foreign key creation event handlers
+                fieldGroup.addEventListener('mouseenter', (e) => handleFieldHover(e, true));
+                fieldGroup.addEventListener('mouseleave', (e) => handleFieldHover(e, false));
+                fieldGroup.addEventListener('mousedown', (e) => handleFieldClick(e));
+                
+                fieldsGroup.appendChild(fieldGroup);
                 yPos += 16;
             });
             
@@ -1438,9 +1534,13 @@
         
         // Close modal when clicking outside of it
         window.onclick = function(event) {
-            const modal = document.getElementById('addTableModal');
-            if (event.target === modal) {
+            const tableModal = document.getElementById('addTableModal');
+            const fkModal = document.getElementById('addForeignKeyModal');
+            
+            if (event.target === tableModal) {
                 closeAddTableDialog();
+            } else if (event.target === fkModal) {
+                closeForeignKeyDialog();
             }
         }
         
@@ -1646,6 +1746,357 @@
                         rect.setAttribute('stroke-width', originalStrokeWidth);
                     }, 2000);
                 }
+            }
+        }
+        
+        // Foreign Key Creation Functions
+        function startAddForeignKey() {
+            fkCreationMode = true;
+            fkSourceField = null;
+            fkTargetField = null;
+            
+            // Show status message
+            const status = document.getElementById('fk-status');
+            status.style.display = 'block';
+            status.textContent = 'Click on a source field to start';
+            
+            // Add creation mode class to body
+            document.body.classList.add('fk-creation-mode');
+            
+            // Create drag line element
+            if (!fkDragLine) {
+                const svg = document.getElementById('diagram');
+                const zoomGroup = document.getElementById('zoom-group');
+                fkDragLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                fkDragLine.setAttribute('class', 'fk-drag-line');
+                zoomGroup.appendChild(fkDragLine);
+            }
+            
+            // Add escape key handler
+            document.addEventListener('keydown', handleFKEscape);
+        }
+        
+        function handleFKEscape(e) {
+            if (e.key === 'Escape') {
+                cancelForeignKeyCreation();
+            }
+        }
+        
+        function cancelForeignKeyCreation() {
+            fkCreationMode = false;
+            fkSourceField = null;
+            fkTargetField = null;
+            
+            // Hide status
+            document.getElementById('fk-status').style.display = 'none';
+            
+            // Remove creation mode class
+            document.body.classList.remove('fk-creation-mode');
+            
+            // Remove drag line
+            if (fkDragLine && fkDragLine.parentNode) {
+                fkDragLine.parentNode.removeChild(fkDragLine);
+                fkDragLine = null;
+            }
+            
+            // Clear any highlighted fields
+            document.querySelectorAll('.field-selected, .field-hover').forEach(el => {
+                el.classList.remove('field-selected', 'field-hover');
+            });
+            
+            // Remove escape handler
+            document.removeEventListener('keydown', handleFKEscape);
+            
+            // Remove drag handlers
+            document.removeEventListener('mousemove', handleFKDrag);
+            document.removeEventListener('mouseup', handleFKDrop);
+        }
+        
+        function handleFieldHover(e, isEntering) {
+            if (!fkCreationMode) return;
+            
+            const fieldBg = e.currentTarget.querySelector('.field-bg');
+            if (!fieldBg) return;
+            
+            if (isEntering) {
+                fieldBg.classList.add('field-hover');
+            } else {
+                fieldBg.classList.remove('field-hover');
+            }
+        }
+        
+        function handleFieldClick(e) {
+            if (!fkCreationMode) return;
+            
+            e.stopPropagation();
+            e.preventDefault();
+            
+            const fieldGroup = e.currentTarget;
+            const fieldBg = fieldGroup.querySelector('.field-bg');
+            
+            if (!fkSourceField) {
+                // First click - select source field
+                fkSourceField = {
+                    tableUUID: fieldGroup.getAttribute('data-table-uuid'),
+                    tableName: fieldGroup.getAttribute('data-table-name'),
+                    fieldName: fieldGroup.getAttribute('data-field-name'),
+                    fieldType: fieldGroup.getAttribute('data-field-type'),
+                    element: fieldGroup
+                };
+                
+                fieldBg.classList.add('field-selected');
+                document.getElementById('fk-status').textContent = 'Now drag to the target field';
+                
+                // Start drag
+                const rect = fieldGroup.getBoundingClientRect();
+                const svg = document.getElementById('diagram');
+                const pt = svg.createSVGPoint();
+                pt.x = rect.left + rect.width / 2;
+                pt.y = rect.top + rect.height / 2;
+                const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+                
+                fkDragLine.setAttribute('x1', svgP.x / currentZoom);
+                fkDragLine.setAttribute('y1', svgP.y / currentZoom);
+                fkDragLine.setAttribute('x2', svgP.x / currentZoom);
+                fkDragLine.setAttribute('y2', svgP.y / currentZoom);
+                fkDragLine.style.display = 'block';
+                
+                document.addEventListener('mousemove', handleFKDrag);
+                document.addEventListener('mouseup', handleFKDrop);
+            }
+        }
+        
+        function handleFKDrag(e) {
+            if (!fkDragLine || !fkSourceField) return;
+            
+            const svg = document.getElementById('diagram');
+            const pt = svg.createSVGPoint();
+            pt.x = e.clientX;
+            pt.y = e.clientY;
+            const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+            
+            fkDragLine.setAttribute('x2', svgP.x / currentZoom);
+            fkDragLine.setAttribute('y2', svgP.y / currentZoom);
+        }
+        
+        function handleFKDrop(e) {
+            if (!fkSourceField) return;
+            
+            // Check if we're over a field
+            const target = e.target;
+            let fieldGroup = target;
+            while (fieldGroup && !fieldGroup.classList.contains('field-group')) {
+                fieldGroup = fieldGroup.parentElement;
+            }
+            
+            if (fieldGroup && fieldGroup !== fkSourceField.element) {
+                // Valid target field
+                fkTargetField = {
+                    tableUUID: fieldGroup.getAttribute('data-table-uuid'),
+                    tableName: fieldGroup.getAttribute('data-table-name'),
+                    fieldName: fieldGroup.getAttribute('data-field-name'),
+                    fieldType: fieldGroup.getAttribute('data-field-type'),
+                    element: fieldGroup
+                };
+                
+                // Show foreign key dialog
+                showForeignKeyDialog();
+            } else {
+                // Invalid drop - cancel
+                cancelForeignKeyCreation();
+            }
+        }
+        
+        function showForeignKeyDialog() {
+            if (!fkSourceField || !fkTargetField) return;
+            
+            // Store field data in the dialog for later retrieval
+            const dialog = document.getElementById('addForeignKeyModal');
+            dialog.dataset.sourceTableUuid = fkSourceField.tableUUID;
+            dialog.dataset.sourceTableName = fkSourceField.tableName;
+            dialog.dataset.sourceFieldName = fkSourceField.fieldName;
+            dialog.dataset.sourceFieldType = fkSourceField.fieldType;
+            dialog.dataset.targetTableUuid = fkTargetField.tableUUID;
+            dialog.dataset.targetTableName = fkTargetField.tableName;
+            dialog.dataset.targetFieldName = fkTargetField.fieldName;
+            dialog.dataset.targetFieldType = fkTargetField.fieldType;
+            
+            // Hide drag line
+            if (fkDragLine) {
+                fkDragLine.style.display = 'none';
+            }
+            
+            // Populate dialog
+            document.getElementById('fk-from-info').textContent = 
+                `${fkSourceField.tableName}.${fkSourceField.fieldName} (${fkSourceField.fieldType})`;
+            document.getElementById('fk-to-info').textContent = 
+                `${fkTargetField.tableName}.${fkTargetField.fieldName} (${fkTargetField.fieldType})`;
+            
+            // Generate default name
+            document.getElementById('fkName').value = 
+                `fk_${fkSourceField.tableName}_${fkTargetField.tableName}`;
+            
+            // Show dialog
+            document.getElementById('addForeignKeyModal').style.display = 'block';
+            
+        }
+        
+        function closeForeignKeyDialog() {
+            document.getElementById('addForeignKeyModal').style.display = 'none';
+            // Don't call cancelForeignKeyCreation() here - we need to preserve the field data
+        }
+        
+        function createForeignKey() {
+            try {
+                // If fields are null, try to retrieve from dialog dataset
+                if (!fkSourceField || !fkTargetField) {
+                    const dialog = document.getElementById('addForeignKeyModal');
+                    
+                    fkSourceField = {
+                        tableUUID: dialog.dataset.sourceTableUuid,
+                        tableName: dialog.dataset.sourceTableName,
+                        fieldName: dialog.dataset.sourceFieldName,
+                        fieldType: dialog.dataset.sourceFieldType
+                    };
+                    
+                    fkTargetField = {
+                        tableUUID: dialog.dataset.targetTableUuid,
+                        tableName: dialog.dataset.targetTableName,
+                        fieldName: dialog.dataset.targetFieldName,
+                        fieldType: dialog.dataset.targetFieldType
+                    };
+                }
+                
+                if (!fkSourceField.tableUUID || !fkTargetField.tableUUID) {
+                    alert('Please select both source and target fields');
+                    return;
+                }
+                
+                const fkName = document.getElementById('fkName').value.trim();
+                if (!fkName) {
+                    alert('Please enter a foreign key name');
+                    return;
+                }
+                
+                
+                // Generate UUIDs
+                const fkUUID = generateUUID();
+                const displayUUID = generateUUID();
+                
+                // Get table positions to calculate initial vertices
+                // The tableUUID from fields is the display UUID (since we set it in renderTable)
+                const sourceLayout = layoutInfo[fkSourceField.tableUUID];
+                const targetLayout = layoutInfo[fkTargetField.tableUUID];
+                
+                if (!sourceLayout || !targetLayout) {
+                    alert('Cannot find table layouts');
+                    console.error('Source layout:', sourceLayout, 'Target layout:', targetLayout);
+                    return;
+                }
+            
+                // Calculate a simple bounding box between the tables
+                const sourceX = sourceLayout.rect.X;
+                const sourceY = sourceLayout.rect.Y;
+                const targetX = targetLayout.rect.X;
+                const targetY = targetLayout.rect.Y;
+                
+                const minX = Math.min(sourceX, targetX) - 50;
+                const minY = Math.min(sourceY, targetY) - 50;
+                const maxX = Math.max(sourceX + sourceLayout.rect.Width, targetX + targetLayout.rect.Width) + 50;
+                const maxY = Math.max(sourceY + sourceLayout.rect.Height, targetY + targetLayout.rect.Height) + 50;
+                
+                // Calculate vertices based on table positions
+                // The vertices should be relative to the relationship's bounding box
+                // For a simple connection, create vertices that go from source to target
+                const relativeSourceX = sourceX - minX;
+                const relativeSourceY = sourceY - minY;
+                const relativeTargetX = targetX - minX;
+                const relativeTargetY = targetY - minY;
+                
+                // Create vertices for an elbow connection
+                const vertices = [
+                    { X: relativeSourceX + sourceLayout.rect.Width, Y: relativeSourceY + sourceLayout.rect.Height / 2 },
+                    { X: relativeSourceX + sourceLayout.rect.Width + 50, Y: relativeSourceY + sourceLayout.rect.Height / 2 },
+                    { X: relativeSourceX + sourceLayout.rect.Width + 50, Y: relativeTargetY + targetLayout.rect.Height / 2 },
+                    { X: relativeTargetX, Y: relativeTargetY + targetLayout.rect.Height / 2 }
+                ];
+                
+                
+                // Create the foreign key relationship data
+                const relationshipData = {
+                    uuid: fkUUID,
+                    name: fkName,
+                    vertices: vertices,
+                    connectInfos: [
+                        {
+                            Index: 2, // Right side
+                            RefUUID: fkSourceField.tableUUID
+                        },
+                        {
+                            Index: 0, // Left side
+                            RefUUID: fkTargetField.tableUUID
+                        }
+                    ],
+                    connectorCommon: {
+                        Type: "Elbow",
+                        StartAxis: "Horizontal"
+                    },
+                    arrowCommon: {
+                        BeginStyle: "None",
+                        EndStyle: "None"
+                    }
+                };
+                
+                
+                // Add to relationships map
+                relationshipsMap[fkUUID] = {
+                    data: relationshipData,
+                    layout: {
+                        rect: {
+                            X: 0,
+                            Y: 0,
+                            Width: 200,
+                            Height: 200
+                        }
+                    }
+                };
+                
+                // Update table relationships
+                [fkSourceField.tableUUID, fkTargetField.tableUUID].forEach(tableUUID => {
+                    if (!tableRelationships[tableUUID]) {
+                        tableRelationships[tableUUID] = [];
+                    }
+                    tableRelationships[tableUUID].push(fkUUID);
+                });
+                
+                // Add to layout info with proper bounding box
+                layoutInfo[displayUUID] = {
+                    name: fkName,
+                    rect: {
+                        X: minX,
+                        Y: minY,
+                        Width: Math.max(100, maxX - minX),
+                        Height: Math.max(100, maxY - minY)
+                    }
+                };
+                
+                
+                // Add to display objects
+                displayObjectsMap[displayUUID] = {
+                    name: fkName,
+                    refUUID: fkUUID
+                };
+                
+                // Render the relationship
+                renderRelationship(displayUUID, fkName, relationshipData);
+                
+                // Close dialog and cleanup
+                closeForeignKeyDialog();
+                cancelForeignKeyCreation();  // Now we can clear the fields
+                
+            } catch (error) {
+                console.error('Error creating foreign key:', error);
+                alert('Error creating foreign key: ' + error.message);
             }
         }
     </script>
