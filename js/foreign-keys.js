@@ -307,25 +307,28 @@ NModelViewer.foreignKeys = {
                 }
             };
             
-            // Add to relationships map
-            NModelViewer.state.relationshipsMap[fkUUID] = {
+            // Add to relationships map with the display UUID as the key
+            NModelViewer.state.relationshipsMap[displayUUID] = {
+                uuid: displayUUID,
+                name: fkName,
                 data: relationshipData,
                 layout: {
+                    name: fkName,
                     rect: {
-                        X: 0,
-                        Y: 0,
-                        Width: 200,
-                        Height: 200
+                        X: minX,
+                        Y: minY,
+                        Width: Math.max(100, maxX - minX),
+                        Height: Math.max(100, maxY - minY)
                     }
                 }
             };
             
-            // Update table relationships
+            // Update table relationships - use displayUUID as that's what we're tracking
             [fkSourceField.tableUUID, fkTargetField.tableUUID].forEach(tableUUID => {
                 if (!NModelViewer.state.tableRelationships[tableUUID]) {
                     NModelViewer.state.tableRelationships[tableUUID] = [];
                 }
-                NModelViewer.state.tableRelationships[tableUUID].push(fkUUID);
+                NModelViewer.state.tableRelationships[tableUUID].push(displayUUID);
             });
             
             // Add to layout info with proper bounding box
@@ -344,6 +347,25 @@ NModelViewer.foreignKeys = {
                 name: fkName,
                 refUUID: fkUUID
             };
+            
+            // Add the new foreign key to the model's child objects if we have model data
+            if (NModelViewer.state.modelData) {
+                // Find the MVDiagram object and add to its ChildObjectUUIDs
+                for (const [uuid, objects] of Object.entries(NModelViewer.state.modelData.ObjectJsons)) {
+                    if (Array.isArray(objects)) {
+                        const metaObj = objects.find(obj => obj._META_ && obj.ObjectTypeID === 'MVDiagram');
+                        if (metaObj) {
+                            if (!metaObj.ChildObjectUUIDs) {
+                                metaObj.ChildObjectUUIDs = [];
+                            }
+                            if (!metaObj.ChildObjectUUIDs.includes(displayUUID)) {
+                                metaObj.ChildObjectUUIDs.push(displayUUID);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
             
             // Render the relationship
             NModelViewer.relationships.renderRelationship(displayUUID, fkName, relationshipData);

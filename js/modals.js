@@ -185,6 +185,25 @@ NModelViewer.modals = {
         NModelViewer.state.displayObjectsMap[displayUUID] = displayObject;
         NModelViewer.state.layoutInfo[displayUUID] = layoutObject;
         
+        // Add the new table to the model's child objects if we have model data
+        if (NModelViewer.state.modelData) {
+            // Find the MVDiagram object and add to its ChildObjectUUIDs
+            for (const [uuid, objects] of Object.entries(NModelViewer.state.modelData.ObjectJsons)) {
+                if (Array.isArray(objects)) {
+                    const metaObj = objects.find(obj => obj._META_ && obj.ObjectTypeID === 'MVDiagram');
+                    if (metaObj) {
+                        if (!metaObj.ChildObjectUUIDs) {
+                            metaObj.ChildObjectUUIDs = [];
+                        }
+                        if (!metaObj.ChildObjectUUIDs.includes(displayUUID)) {
+                            metaObj.ChildObjectUUIDs.push(displayUUID);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        
         // Render the new table
         NModelViewer.rendering.renderTable(displayUUID, tableSchema, layoutObject.rect);
         
