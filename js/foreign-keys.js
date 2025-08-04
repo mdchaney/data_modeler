@@ -254,12 +254,34 @@ NModelViewer.foreignKeys = {
                 console.error('Source layout:', sourceLayout, 'Target layout:', targetLayout);
                 return;
             }
-        
-            // Calculate a simple bounding box between the tables
-            const sourceX = sourceLayout.rect.X;
-            const sourceY = sourceLayout.rect.Y;
-            const targetX = targetLayout.rect.X;
-            const targetY = targetLayout.rect.Y;
+            
+            // Get actual table positions from the DOM elements
+            const sourceElement = document.querySelector(`g[data-uuid="${fkSourceField.tableUUID}"]`);
+            const targetElement = document.querySelector(`g[data-uuid="${fkTargetField.tableUUID}"]`);
+            
+            let sourceX = sourceLayout.rect.X;
+            let sourceY = sourceLayout.rect.Y;
+            let targetX = targetLayout.rect.X;
+            let targetY = targetLayout.rect.Y;
+            
+            // If elements exist, get their actual positions from transforms
+            if (sourceElement) {
+                const sourceTransform = sourceElement.getAttribute('transform');
+                const sourceMatch = sourceTransform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+                if (sourceMatch) {
+                    sourceX = parseFloat(sourceMatch[1]);
+                    sourceY = parseFloat(sourceMatch[2]);
+                }
+            }
+            
+            if (targetElement) {
+                const targetTransform = targetElement.getAttribute('transform');
+                const targetMatch = targetTransform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+                if (targetMatch) {
+                    targetX = parseFloat(targetMatch[1]);
+                    targetY = parseFloat(targetMatch[2]);
+                }
+            }
             
             const minX = Math.min(sourceX, targetX) - 50;
             const minY = Math.min(sourceY, targetY) - 50;
