@@ -288,20 +288,10 @@ NModelViewer.foreignKeys = {
             const maxX = Math.max(sourceX + sourceLayout.rect.Width, targetX + targetLayout.rect.Width) + 50;
             const maxY = Math.max(sourceY + sourceLayout.rect.Height, targetY + targetLayout.rect.Height) + 50;
             
-            // Calculate vertices based on table positions
-            // The vertices should be relative to the relationship's bounding box
-            // For a simple connection, create vertices that go from source to target
-            const relativeSourceX = sourceX - minX;
-            const relativeSourceY = sourceY - minY;
-            const relativeTargetX = targetX - minX;
-            const relativeTargetY = targetY - minY;
-            
-            // Create vertices for an elbow connection
+            // Create simple vertices that will be recalculated
             const vertices = [
-                { X: relativeSourceX + sourceLayout.rect.Width, Y: relativeSourceY + sourceLayout.rect.Height / 2 },
-                { X: relativeSourceX + sourceLayout.rect.Width + 50, Y: relativeSourceY + sourceLayout.rect.Height / 2 },
-                { X: relativeSourceX + sourceLayout.rect.Width + 50, Y: relativeTargetY + targetLayout.rect.Height / 2 },
-                { X: relativeTargetX, Y: relativeTargetY + targetLayout.rect.Height / 2 }
+                { X: 50, Y: 50 },
+                { X: 150, Y: 150 }
             ];
             
             // Create the foreign key relationship data
@@ -389,8 +379,102 @@ NModelViewer.foreignKeys = {
                 }
             }
             
-            // Render the relationship
-            NModelViewer.relationships.renderRelationship(displayUUID, fkName, relationshipData);
+            // Instead of rendering with bad vertices, create the relationship element directly
+            // with the correct path from the start
+            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            g.setAttribute('class', 'relationship-group');
+            g.setAttribute('data-uuid', displayUUID);
+            g.setAttribute('data-name', fkName);
+            
+            // Calculate the proper path using the same logic as recalculateRelationshipPath
+            console.log('Creating FK between:', {
+                source: { x: sourceX, y: sourceY, width: sourceLayout.rect.Width, height: sourceLayout.rect.Height },
+                target: { x: targetX, y: targetY, width: targetLayout.rect.Width, height: targetLayout.rect.Height }
+            });
+            
+            const center1 = {
+                x: sourceX + sourceLayout.rect.Width / 2,
+                y: sourceY + sourceLayout.rect.Height / 2
+            };
+            const center2 = {
+                x: targetX + targetLayout.rect.Width / 2,
+                y: targetY + targetLayout.rect.Height / 2
+            };
+            
+            // Determine the best sides to connect
+            const dx = center2.x - center1.x;
+            const dy = center2.y - center1.y;
+            
+            let point1, point2;
+            
+            if (Math.abs(dx) > Math.abs(dy)) {
+                // Horizontal relationship
+                if (dx > 0) {
+                    // Source is left of target
+                    point1 = { x: sourceX + sourceLayout.rect.Width, y: sourceY + sourceLayout.rect.Height / 2 };
+                    point2 = { x: targetX, y: targetY + targetLayout.rect.Height / 2 };
+                } else {
+                    // Source is right of target
+                    point1 = { x: sourceX, y: sourceY + sourceLayout.rect.Height / 2 };
+                    point2 = { x: targetX + targetLayout.rect.Width, y: targetY + targetLayout.rect.Height / 2 };
+                }
+            } else {
+                // Vertical relationship
+                if (dy > 0) {
+                    // Source is above target
+                    point1 = { x: sourceX + sourceLayout.rect.Width / 2, y: sourceY + sourceLayout.rect.Height };
+                    point2 = { x: targetX + targetLayout.rect.Width / 2, y: targetY };
+                } else {
+                    // Source is below target
+                    point1 = { x: sourceX + sourceLayout.rect.Width / 2, y: sourceY };
+                    point2 = { x: targetX + targetLayout.rect.Width / 2, y: targetY + targetLayout.rect.Height };
+                }
+            }
+            
+            console.log('Connection points:', { point1, point2, dx, dy });
+            
+            // Create elbow path
+            let d = `M ${point1.x} ${point1.y}`;
+            
+            if (Math.abs(dx) > Math.abs(dy)) {
+                // Horizontal dominant
+                const midX = (point1.x + point2.x) / 2;
+                d += ` L ${midX} ${point1.y}`;
+                d += ` L ${midX} ${point2.y}`;
+                d += ` L ${point2.x} ${point2.y}`;
+            } else {
+                // Vertical dominant
+                const midY = (point1.y + point2.y) / 2;
+                d += ` L ${point1.x} ${midY}`;
+                d += ` L ${point2.x} ${midY}`;
+                d += ` L ${point2.x} ${point2.y}`;
+            }
+            
+            console.log('Generated path:', d);
+            
+            // Create the path element
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', d);
+            path.setAttribute('class', 'relationship-line');
+            path.setAttribute('data-uuid', displayUUID);
+            
+            // Create clickable path
+            const clickPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            clickPath.setAttribute('d', d);
+            clickPath.setAttribute('stroke', 'transparent');
+            clickPath.setAttribute('stroke-width', '10');
+            clickPath.setAttribute('fill', 'none');
+            clickPath.style.cursor = 'pointer';
+            
+            // Add click handler
+            clickPath.addEventListener('click', () => {
+                NModelViewer.relationships.showRelationshipInfo(displayUUID, fkName, relationshipData);
+            });
+            
+            g.appendChild(clickPath);
+            g.appendChild(path);
+            
+            document.getElementById('relationships').appendChild(g);
             
             // Close dialog and cleanup
             this.closeForeignKeyDialog();
