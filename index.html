@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Model Viewer</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Data Model Viewer</h1>
+        
+        <div class="controls">
+            <input type="file" id="file-input" accept=".nmodel">
+            <button onclick="loadFile()">Load Model</button>
+            <button onclick="showAddTableDialog()">Add Table</button>
+            <button onclick="startAddForeignKey()">Add Foreign Key</button>
+            <button onclick="exportSVG()">Export as SVG</button>
+            <button onclick="exportPNG()">Export as PNG</button>
+            <button id="show-debug" onclick="toggleDebug()">Show Debug Info</button>
+        </div>
+        
+        <div id="diagram-container">
+            <div class="zoom-controls">
+                <button onclick="zoom(1.2)">+</button>
+                <button onclick="zoom(0.8)">-</button>
+                <button onclick="resetZoom()">⟲</button>
+                <span id="zoom-level">100%</span>
+            </div>
+            <div class="page-info" id="page-info"></div>
+            <svg id="diagram" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <marker id="arrowhead" markerWidth="10" markerHeight="10" 
+                            refX="9" refY="3" orient="auto">
+                        <polygon points="0 0, 10 3, 0 6" fill="#666" />
+                    </marker>
+                    <marker id="arrowhead-start" markerWidth="10" markerHeight="10" 
+                            refX="1" refY="3" orient="auto">
+                        <polygon points="10 0, 0 3, 10 6" fill="#666" />
+                    </marker>
+                    <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
+                        <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#f0f0f0" stroke-width="1"/>
+                    </pattern>
+                </defs>
+                <rect width="100%" height="100%" fill="url(#grid)" />
+                <g id="zoom-group" transform="scale(1)">
+                    <g id="relationships"></g>
+                    <g id="tables"></g>
+                </g>
+            </svg>
+        </div>
+        
+        <div id="debug-info" class="debug-info"></div>
+        
+        <div id="info-panel">
+            <h3>Table Information</h3>
+            <div id="info-content"></div>
+        </div>
+    </div>
+    
+    <!-- Add Table Modal -->
+    <div id="addTableModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeAddTableDialog()">&times;</span>
+            <h2>Add New Table</h2>
+            
+            <div class="form-group">
+                <label for="tableName">Table Name:</label>
+                <input type="text" id="tableName" placeholder="Enter table name (e.g., users)">
+            </div>
+            
+            <div class="form-group">
+                <label>Fields:</label>
+                <div id="fieldsList" class="field-list">
+                    <!-- Fields will be added here dynamically -->
+                </div>
+                <button class="add-field-btn" onclick="addFieldRow()">+ Add Field</button>
+            </div>
+            
+            <div class="modal-buttons">
+                <button class="btn-secondary" onclick="closeAddTableDialog()">Cancel</button>
+                <button class="btn-primary" onclick="createTable()">Create Table</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Foreign Key Modal -->
+    <div id="addForeignKeyModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeForeignKeyDialog(); cancelForeignKeyCreation();">&times;</span>
+            <h2>Create Foreign Key</h2>
+            
+            <div class="form-group">
+                <label>From:</label>
+                <p id="fk-from-info" style="margin: 5px 0; font-weight: bold;"></p>
+            </div>
+            
+            <div class="form-group">
+                <label>To:</label>
+                <p id="fk-to-info" style="margin: 5px 0; font-weight: bold;"></p>
+            </div>
+            
+            <div class="form-group">
+                <label for="fkName">Foreign Key Name:</label>
+                <input type="text" id="fkName" placeholder="fk_table1_table2">
+            </div>
+            
+            <div class="modal-buttons">
+                <button class="btn-secondary" onclick="closeForeignKeyDialog(); cancelForeignKeyCreation();">Cancel</button>
+                <button class="btn-primary" onclick="createForeignKey()">Create Foreign Key</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Foreign Key Status -->
+    <div id="fk-status">Click on a field to start, then drag to another field</div>
+
+    <!-- Load JavaScript files in order -->
+    <script src="js/main.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/data-model.js"></script>
+    <script src="js/render-tables.js"></script>
+    <script src="js/render-relationships.js"></script>
+    <script src="js/interactions.js"></script>
+    <script src="js/foreign-keys.js"></script>
+    <script src="js/modals.js"></script>
+    <script src="js/export.js"></script>
+</body>
+</html>
