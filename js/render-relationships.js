@@ -16,20 +16,99 @@ NModelViewer.relationships = {
         g.setAttribute('data-uuid', uuid);
         g.setAttribute('data-name', name);
         
-        // The vertices are relative to the relationship's bounding box
-        const offsetX = layout.rect.X;
-        const offsetY = layout.rect.Y;
-        
         // Create the path based on connector type
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         let d = '';
         
-        if (relData.connectorCommon && relData.connectorCommon.Type === 'Elbow') {
-            // Generate elbow connector path
-            d = NModelViewer.utils.generateElbowPath(relData.vertices, offsetX, offsetY, 
-                                relData.connectorCommon.StartAxis || 'Horizontal');
+        // Instead of using vertices, calculate clean elbow paths based on table positions
+        if (relData.connectInfos && relData.connectInfos.length >= 2) {
+            const table1UUID = relData.connectInfos[0].RefUUID;
+            const table2UUID = relData.connectInfos[1].RefUUID;
+            
+            const table1Layout = NModelViewer.state.layoutInfo[table1UUID];
+            const table2Layout = NModelViewer.state.layoutInfo[table2UUID];
+            
+            if (table1Layout && table2Layout) {
+                // Get table positions and sizes
+                const sourceX = table1Layout.rect.X;
+                const sourceY = table1Layout.rect.Y;
+                const targetX = table2Layout.rect.X;
+                const targetY = table2Layout.rect.Y;
+                
+                const center1 = {
+                    x: sourceX + table1Layout.rect.Width / 2,
+                    y: sourceY + table1Layout.rect.Height / 2
+                };
+                const center2 = {
+                    x: targetX + table2Layout.rect.Width / 2,
+                    y: targetY + table2Layout.rect.Height / 2
+                };
+                
+                // Determine the best sides to connect
+                const dx = center2.x - center1.x;
+                const dy = center2.y - center1.y;
+                
+                let point1, point2;
+                
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    // Horizontal relationship
+                    if (dx > 0) {
+                        // Source is left of target
+                        point1 = { x: sourceX + table1Layout.rect.Width, y: sourceY + table1Layout.rect.Height / 2 };
+                        point2 = { x: targetX, y: targetY + table2Layout.rect.Height / 2 };
+                    } else {
+                        // Source is right of target
+                        point1 = { x: sourceX, y: sourceY + table1Layout.rect.Height / 2 };
+                        point2 = { x: targetX + table2Layout.rect.Width, y: targetY + table2Layout.rect.Height / 2 };
+                    }
+                } else {
+                    // Vertical relationship
+                    if (dy > 0) {
+                        // Source is above target
+                        point1 = { x: sourceX + table1Layout.rect.Width / 2, y: sourceY + table1Layout.rect.Height };
+                        point2 = { x: targetX + table2Layout.rect.Width / 2, y: targetY };
+                    } else {
+                        // Source is below target
+                        point1 = { x: sourceX + table1Layout.rect.Width / 2, y: sourceY };
+                        point2 = { x: targetX + table2Layout.rect.Width / 2, y: targetY + table2Layout.rect.Height };
+                    }
+                }
+                
+                // Create elbow path
+                d = `M ${point1.x} ${point1.y}`;
+                
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    // Horizontal dominant
+                    const midX = (point1.x + point2.x) / 2;
+                    d += ` L ${midX} ${point1.y}`;
+                    d += ` L ${midX} ${point2.y}`;
+                    d += ` L ${point2.x} ${point2.y}`;
+                } else {
+                    // Vertical dominant
+                    const midY = (point1.y + point2.y) / 2;
+                    d += ` L ${point1.x} ${midY}`;
+                    d += ` L ${point2.x} ${midY}`;
+                    d += ` L ${point2.x} ${point2.y}`;
+                }
+            } else {
+                // Fallback to vertex-based rendering if table layouts not found
+                const offsetX = layout.rect.X;
+                const offsetY = layout.rect.Y;
+                
+                if (relData.connectorCommon && relData.connectorCommon.Type === 'Elbow') {
+                    d = NModelViewer.utils.generateElbowPath(relData.vertices, offsetX, offsetY, 
+                                        relData.connectorCommon.StartAxis || 'Horizontal');
+                } else {
+                    d = `M ${offsetX + relData.vertices[0].X} ${offsetY + relData.vertices[0].Y}`;
+                    for (let i = 1; i < relData.vertices.length; i++) {
+                        d += ` L ${offsetX + relData.vertices[i].X} ${offsetY + relData.vertices[i].Y}`;
+                    }
+                }
+            }
         } else {
-            // Default to straight lines through vertices
+            // Fallback for no connection info
+            const offsetX = layout.rect.X;
+            const offsetY = layout.rect.Y;
             d = `M ${offsetX + relData.vertices[0].X} ${offsetY + relData.vertices[0].Y}`;
             for (let i = 1; i < relData.vertices.length; i++) {
                 d += ` L ${offsetX + relData.vertices[i].X} ${offsetY + relData.vertices[i].Y}`;
