@@ -108,6 +108,9 @@ svg {
     border-radius: 4px;
     padding: 5px;
     z-index: 10;
+    height: 40px;
+    display: flex;
+    align-items: center;
 }
 .zoom-controls button {
     width: 30px;
@@ -119,6 +122,51 @@ svg {
     border-radius: 3px;
 }
 .zoom-controls button:hover {
+    background: #f0f0f0;
+}
+.zoom-controls span {
+    margin-left: 5px;
+    font-size: 13px;
+    color: #666;
+}
+.page-size-controls {
+    position: absolute;
+    top: 10px;
+    right: 180px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 5px;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    height: 40px;
+}
+.page-size-controls input[type="number"] {
+    width: 40px;
+    height: 30px;
+    padding: 0 4px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    text-align: center;
+    font-size: 13px;
+}
+.page-size-controls span {
+    color: #666;
+    font-size: 13px;
+    padding: 0 2px;
+}
+.page-size-controls button {
+    height: 30px;
+    padding: 0 12px;
+    border: 1px solid #ddd;
+    background: white;
+    cursor: pointer;
+    border-radius: 3px;
+    font-size: 13px;
+}
+.page-size-controls button:hover {
     background: #f0f0f0;
 }
 .page-info {

@@ -10,7 +10,10 @@ const NModelViewer = {
         resizeHandle: null,
         resizeStartPos: { x: 0, y: 0 },
         resizeStartSize: { width: 0, height: 0 },
-        diagramInfo: {},
+        diagramInfo: {
+            paperSize: { Width: 850, Height: 1100 },  // Letter size in pixels at 100 DPI
+            pagesSize: { Width: 4, Height: 3 }        // Default 4x3 pages
+        },
         tablesMap: {}, // Map of table UUID to table schema
         displayObjectsMap: {}, // Map of display UUID to display info
         layoutInfo: {}, // Map of UUID to layout position info
@@ -76,7 +79,10 @@ const NModelViewer = {
     
     // Initialize SVG
     initializeSVG: function() {
-        // This will be populated by render modules
+        // Set up initial SVG dimensions
+        if (this.rendering && this.rendering.setupSVGDimensions) {
+            this.rendering.setupSVGDimensions();
+        }
     },
     
     // Debug mode functions
@@ -119,6 +125,26 @@ const NModelViewer = {
             zoomGroup.setAttribute('transform', 'scale(1)');
         }
         document.getElementById('zoom-level').textContent = '100%';
+    },
+    
+    // Update canvas size based on page dimensions
+    updateCanvasSize: function() {
+        const widthInput = document.getElementById('pages-width');
+        const heightInput = document.getElementById('pages-height');
+        
+        const pagesWidth = parseInt(widthInput.value) || 4;
+        const pagesHeight = parseInt(heightInput.value) || 3;
+        
+        // Update state
+        this.state.diagramInfo.pagesSize = {
+            Width: pagesWidth,
+            Height: pagesHeight
+        };
+        
+        // Update SVG dimensions
+        if (this.rendering && this.rendering.setupSVGDimensions) {
+            this.rendering.setupSVGDimensions();
+        }
     }
 };
 
@@ -133,3 +159,4 @@ window.debugMode = false; // Backward compatibility
 window.toggleDebug = function() { NModelViewer.toggleDebug(); };
 window.zoom = function(factor) { NModelViewer.zoom(factor); };
 window.resetZoom = function() { NModelViewer.resetZoom(); };
+window.updateCanvasSize = function() { NModelViewer.updateCanvasSize(); };

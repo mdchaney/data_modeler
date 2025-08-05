@@ -27,6 +27,13 @@
                 <button onclick="resetZoom()">⟲</button>
                 <span id="zoom-level">100%</span>
             </div>
+            <div class="page-size-controls">
+                <input type="number" id="pages-width" min="1" max="20" value="4">
+                <span>×</span>
+                <input type="number" id="pages-height" min="1" max="20" value="3">
+                <span>pages</span>
+                <button onclick="updateCanvasSize()">Set</button>
+            </div>
             <div class="page-info" id="page-info"></div>
             <svg id="diagram" xmlns="http://www.w3.org/2000/svg">
                 <defs>
