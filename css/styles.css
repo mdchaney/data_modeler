@@ -48,6 +48,12 @@ h1 {
 svg {
     background: white;
 }
+.page-boundary {
+    stroke: #e0e0e0;
+    stroke-width: 1;
+    stroke-dasharray: 5, 5;
+    opacity: 0.5;
+}
 .table-node {
     cursor: move;
     filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.2));

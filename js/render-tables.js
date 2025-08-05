@@ -16,12 +16,61 @@ NModelViewer.rendering = {
             // Update page info
             const pageInfo = document.getElementById('page-info');
             pageInfo.textContent = `Canvas: ${totalWidth} × ${totalHeight} (${diagramInfo.pagesSize.Width} × ${diagramInfo.pagesSize.Height} pages)`;
+            
+            // Draw page boundaries
+            this.drawPageBoundaries();
         } else {
             // Default size
             svg.setAttribute('width', '2000');
             svg.setAttribute('height', '2000');
             svg.setAttribute('viewBox', '0 0 2000 2000');
         }
+    },
+    
+    // Draw page boundary lines
+    drawPageBoundaries: function() {
+        const zoomGroup = document.getElementById('zoom-group');
+        const diagramInfo = NModelViewer.state.diagramInfo;
+        
+        // Remove any existing page boundaries
+        const existingBoundaries = document.getElementById('page-boundaries');
+        if (existingBoundaries) {
+            existingBoundaries.remove();
+        }
+        
+        // Create a group for page boundaries
+        const pageBoundariesGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        pageBoundariesGroup.setAttribute('id', 'page-boundaries');
+        
+        const pageWidth = diagramInfo.paperSize.Width;
+        const pageHeight = diagramInfo.paperSize.Height;
+        const pagesX = diagramInfo.pagesSize.Width;
+        const pagesY = diagramInfo.pagesSize.Height;
+        
+        // Draw vertical lines
+        for (let i = 1; i < pagesX; i++) {
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', i * pageWidth);
+            line.setAttribute('y1', 0);
+            line.setAttribute('x2', i * pageWidth);
+            line.setAttribute('y2', pagesY * pageHeight);
+            line.setAttribute('class', 'page-boundary');
+            pageBoundariesGroup.appendChild(line);
+        }
+        
+        // Draw horizontal lines
+        for (let i = 1; i < pagesY; i++) {
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', 0);
+            line.setAttribute('y1', i * pageHeight);
+            line.setAttribute('x2', pagesX * pageWidth);
+            line.setAttribute('y2', i * pageHeight);
+            line.setAttribute('class', 'page-boundary');
+            pageBoundariesGroup.appendChild(line);
+        }
+        
+        // Insert page boundaries as the first child of zoom-group (behind everything else)
+        zoomGroup.insertBefore(pageBoundariesGroup, zoomGroup.firstChild);
     },
     
     // Main render function
