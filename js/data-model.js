@@ -65,6 +65,11 @@ NModelViewer.dataModel = {
             }
             if (obj.PagesSize) {
                 NModelViewer.state.diagramInfo.pagesSize = obj.PagesSize;
+                // Update the page size controls in the UI
+                const pagesWidthInput = document.getElementById('pages-width');
+                const pagesHeightInput = document.getElementById('pages-height');
+                if (pagesWidthInput) pagesWidthInput.value = obj.PagesSize.Width;
+                if (pagesHeightInput) pagesHeightInput.value = obj.PagesSize.Height;
             }
         }
         
