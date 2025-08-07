@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Save/Load Test Suite</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 3px;
+        }
+        .pass {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .fail {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 3px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <h1>NModel Viewer Save/Load Test Suite</h1>
+    
+    <div class="test-section">
+        <h2>Test Controls</h2>
+        <button onclick="runAllTests()">Run All Tests</button>
+        <button onclick="clearResults()">Clear Results</button>
+    </div>
+    
+    <div id="test-results"></div>
+    
+    <!-- Hidden SVG for testing -->
+    <svg id="diagram" style="display: none;">
+        <g id="zoom-group">
+            <g id="relationships"></g>
+            <g id="tables"></g>
+        </g>
+    </svg>
+
+    <!-- Load all the scripts -->
+    <script src="js/main.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/data-model.js"></script>
+    <script src="js/render-tables.js"></script>
+    <script src="js/render-relationships.js"></script>
+    <script src="js/interactions.js"></script>
+    <script src="js/foreign-keys.js"></script>
+    <script src="js/modals.js"></script>
+    <script src="js/export.js"></script>
+
+    <script>
+        const resultsDiv = document.getElementById('test-results');
+        
+        function log(message, isError = false) {
+            const div = document.createElement('div');
+            div.className = 'test-result ' + (isError ? 'fail' : 'pass');
+            div.textContent = message;
+            resultsDiv.appendChild(div);
+        }
+        
+        function logJson(label, obj) {
+            const div = document.createElement('div');
+            div.innerHTML = `<strong>${label}:</strong><pre>${JSON.stringify(obj, null, 2)}</pre>`;
+            resultsDiv.appendChild(div);
+        }
+        
+        function clearResults() {
+            resultsDiv.innerHTML = '';
+        }
+        
+        // Test 1: Create a simple table and verify state
+        function testCreateTable() {
+            log('=== Test 1: Create Table ===');
+            
+            // Reset state
+            NModelViewer.state.tablesMap = {};
+            NModelViewer.state.displayObjectsMap = {};
+            NModelViewer.state.layoutInfo = {};
+            NModelViewer.state.modelData = null;
+            
+            // Create a table like the modal does
+            const tableUUID = 'table-uuid-123';
+            const displayUUID = 'display-uuid-456';
+            const tableName = 'TestTable';
+            
+            const tableSchema = {
+                name: tableName,
+                fields: [
+                    { Name: 'id', Type: 'INTEGER', IsNull: 'NO', IsPrimary: true, OrderNum: 0 },
+                    { Name: 'name', Type: 'VARCHAR', IsNull: 'YES', IsPrimary: false, OrderNum: 1 }
+                ],
+                foreignKeys: []
+            };
+            
+            // Add to state like modal does
+            NModelViewer.state.tablesMap[tableUUID] = tableSchema;
+            
+            NModelViewer.state.displayObjectsMap[displayUUID] = {
+                name: tableName,
+                refUUID: tableUUID,
+                uuid: displayUUID
+            };
+            
+            NModelViewer.state.layoutInfo[displayUUID] = {
+                name: tableName,
+                rect: { X: 100, Y: 100, Width: 200, Height: 140 }
+            };
+            
+            log('Created table in state');
+            logJson('tablesMap', NModelViewer.state.tablesMap);
+            logJson('displayObjectsMap', NModelViewer.state.displayObjectsMap);
+            logJson('layoutInfo', NModelViewer.state.layoutInfo);
+            
+            return { tableUUID, displayUUID, tableSchema };
+        }
+        
+        // Test 2: Save the model and check structure
+        function testSaveModel(testData) {
+            log('=== Test 2: Save Model ===');
+            
+            // Override download to capture the saved data
+            let savedData = null;
+            const originalCreateElement = document.createElement;
+            document.createElement = function(tagName) {
+                const elem = originalCreateElement.call(document, tagName);
+                if (tagName === 'a') {
+                    elem.click = function() {
+                        // Capture the blob URL
+                        fetch(this.href)
+                            .then(response => response.text())
+                            .then(text => {
+                                savedData = JSON.parse(text);
+                                log('Captured saved data');
+                                logJson('Saved Model', savedData);
+                                
+                                // Verify structure
+                                if (!savedData.ObjectJsons) {
+                                    log('ERROR: No ObjectJsons in saved data', true);
+                                    return;
+                                }
+                                
+                                const objectKeys = Object.keys(savedData.ObjectJsons);
+                                log(`Found ${objectKeys.length} objects in ObjectJsons`);
+                                
+                                // Check for MVDiagram
+                                let mvDiagramFound = false;
+                                let mvDiagramUUID = null;
+                                for (const [uuid, objects] of Object.entries(savedData.ObjectJsons)) {
+                                    if (Array.isArray(objects)) {
+                                        const metaObj = objects.find(obj => obj._META_ && obj._META_.ObjectTypeID === 'MVDiagram');
+                                        if (metaObj) {
+                                            mvDiagramFound = true;
+                                            mvDiagramUUID = uuid;
+                                            log(`Found MVDiagram at ${uuid}`);
+                                            logJson('MVDiagram', objects);
+                                            
+                                            // Check ChildObjectUUIDs
+                                            if (metaObj.ChildObjectUUIDs) {
+                                                log(`ChildObjectUUIDs: ${metaObj.ChildObjectUUIDs.join(', ')}`);
+                                            } else {
+                                                log('ERROR: No ChildObjectUUIDs in MVDiagram', true);
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                if (!mvDiagramFound) {
+                                    log('ERROR: No MVDiagram found', true);
+                                }
+                                
+                                // Check for table schema object
+                                if (savedData.ObjectJsons[testData.tableUUID]) {
+                                    log(`Found table schema object at ${testData.tableUUID}`);
+                                    logJson('Table Schema Object', savedData.ObjectJsons[testData.tableUUID]);
+                                } else {
+                                    log(`ERROR: No table schema object at ${testData.tableUUID}`, true);
+                                }
+                                
+                                // Check for display object
+                                if (savedData.ObjectJsons[testData.displayUUID]) {
+                                    log(`Found display object at ${testData.displayUUID}`);
+                                    logJson('Display Object', savedData.ObjectJsons[testData.displayUUID]);
+                                } else {
+                                    log(`ERROR: No display object at ${testData.displayUUID}`, true);
+                                }
+                                
+                                // Test 3: Try to load the saved data
+                                testLoadModel(savedData);
+                            });
+                    };
+                }
+                return elem;
+            };
+            
+            // Call save
+            NModelViewer.dataModel.saveModel();
+            
+            // Restore createElement
+            document.createElement = originalCreateElement;
+        }
+        
+        // Test 3: Load the saved model
+        function testLoadModel(modelData) {
+            log('=== Test 3: Load Model ===');
+            
+            // Reset state
+            NModelViewer.state.tablesMap = {};
+            NModelViewer.state.displayObjectsMap = {};
+            NModelViewer.state.layoutInfo = {};
+            NModelViewer.state.relationshipsMap = {};
+            NModelViewer.state.tableRelationships = {};
+            
+            // Set the model data
+            NModelViewer.state.modelData = modelData;
+            
+            // Call parseAndRenderDiagram (without actual rendering)
+            NModelViewer.dataModel.parseAndRenderDiagram();
+            
+            log('After loading:');
+            logJson('tablesMap', NModelViewer.state.tablesMap);
+            logJson('displayObjectsMap', NModelViewer.state.displayObjectsMap);
+            logJson('layoutInfo', NModelViewer.state.layoutInfo);
+            
+            // Verify data was loaded
+            const tableCount = Object.keys(NModelViewer.state.tablesMap).length;
+            const displayCount = Object.keys(NModelViewer.state.displayObjectsMap).length;
+            const layoutCount = Object.keys(NModelViewer.state.layoutInfo).length;
+            
+            log(`Loaded: ${tableCount} tables, ${displayCount} display objects, ${layoutCount} layouts`);
+            
+            if (tableCount === 0) {
+                log('ERROR: No tables loaded', true);
+            }
+            if (displayCount === 0) {
+                log('ERROR: No display objects loaded', true);
+            }
+            if (layoutCount === 0) {
+                log('ERROR: No layouts loaded', true);
+            }
+        }
+        
+        function runAllTests() {
+            clearResults();
+            
+            // Run test sequence
+            const testData = testCreateTable();
+            
+            // Give it a moment to complete
+            setTimeout(() => {
+                testSaveModel(testData);
+            }, 100);
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            log('Test suite loaded. Click "Run All Tests" to begin.');
+        });
+    </script>
+</body>
+</html>

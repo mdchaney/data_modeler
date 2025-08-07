@@ -97,6 +97,26 @@ NModelViewer.modals = {
                 ObjectJsons: {},
                 MVDiagramData: {}
             };
+            
+            // Create an MVDiagram
+            const diagramUUID = NModelViewer.utils.generateUUID();
+            NModelViewer.state.modelData.ObjectJsons[diagramUUID] = [
+                {
+                    "_META_": true,
+                    "_VERSION_": "",
+                    "ObjectName": "Data Model Diagram",
+                    "ObjectTypeID": "MVDiagram",
+                    "ObjectTypeDisplayName": "MVDiagram",
+                    "ObjectVersion": "17.0.0001",
+                    "ChildObjectUUIDs": []
+                },
+                {
+                    "PaperSize": NModelViewer.state.diagramInfo.paperSize || { Width: 850, Height: 1100 },
+                    "PagesSize": NModelViewer.state.diagramInfo.pagesSize || { Width: 4, Height: 3 }
+                }
+            ];
+            NModelViewer.state.mvDiagramUUID = diagramUUID;
+            console.log('Created new MVDiagram with UUID:', diagramUUID);
         }
         
         // Create table schema object matching the expected format
@@ -112,8 +132,9 @@ NModelViewer.modals = {
             foreignKeys: []
         };
         
-        // Add to tablesMap
-        NModelViewer.state.tablesMap[tableUUID] = tableSchema;
+        // IMPORTANT: Store in tablesMap using the DISPLAY UUID, not the table UUID
+        // This is required for consistency with how tables are loaded from files
+        NModelViewer.state.tablesMap[displayUUID] = tableSchema;
         
         // Find a good position for the new table
         let x = 50;
@@ -166,7 +187,6 @@ NModelViewer.modals = {
         }
         
         const displayObject = {
-            uuid: displayUUID,
             name: tableName,
             refUUID: tableUUID  // This links the display object to the table schema
         };
@@ -185,23 +205,67 @@ NModelViewer.modals = {
         NModelViewer.state.displayObjectsMap[displayUUID] = displayObject;
         NModelViewer.state.layoutInfo[displayUUID] = layoutObject;
         
-        // Add the new table to the model's child objects if we have model data
+        // Add the new table to the model's ObjectJsons immediately
         if (NModelViewer.state.modelData) {
+            // Create the table schema object
+            NModelViewer.state.modelData.ObjectJsons[tableUUID] = [
+                {
+                    "_META_": true,
+                    "_VERSION_": "",
+                    "ObjectName": tableName,
+                    "ObjectTypeID": "TableNormal_PGSQL",
+                    "ObjectTypeDisplayName": "TableNormal_PGSQL",
+                    "ObjectVersion": "17.0.0001"
+                },
+                {
+                    "TableCommon": {
+                        "Fields": fields.map((field, index) => ({
+                            "Name": field.name,
+                            "Type": field.type,
+                            "IsNull": field.nullable ? "YES" : "NO",
+                            "IsPrimary": field.isPrimary || false,
+                            "OrderNum": field.order || index
+                        })),
+                        "ForeignKeys": []
+                    }
+                }
+            ];
+            
+            // Create the display object
+            NModelViewer.state.modelData.ObjectJsons[displayUUID] = [
+                {
+                    "_META_": true,
+                    "_VERSION_": "",
+                    "ObjectName": tableName,
+                    "ObjectTypeID": "MVDiagramModelObject_Table",
+                    "ObjectTypeDisplayName": "MVDiagramModelObject_Table",
+                    "ObjectVersion": "17.0.0001"
+                },
+                {
+                    "RefUUID": tableUUID
+                }
+            ];
+            
             // Find the MVDiagram object and add to its ChildObjectUUIDs
-            for (const [uuid, objects] of Object.entries(NModelViewer.state.modelData.ObjectJsons)) {
-                if (Array.isArray(objects)) {
-                    const metaObj = objects.find(obj => obj._META_ && obj.ObjectTypeID === 'MVDiagram');
-                    if (metaObj) {
-                        if (!metaObj.ChildObjectUUIDs) {
-                            metaObj.ChildObjectUUIDs = [];
-                        }
-                        if (!metaObj.ChildObjectUUIDs.includes(displayUUID)) {
-                            metaObj.ChildObjectUUIDs.push(displayUUID);
-                        }
-                        break;
+            const mvDiagramData = NModelViewer.state.modelData.ObjectJsons[NModelViewer.state.mvDiagramUUID];
+            if (mvDiagramData) {
+                const metaObj = mvDiagramData.find(obj => obj._META_);
+                if (metaObj) {
+                    if (!metaObj.ChildObjectUUIDs) {
+                        metaObj.ChildObjectUUIDs = [];
+                    }
+                    if (!metaObj.ChildObjectUUIDs.includes(displayUUID)) {
+                        metaObj.ChildObjectUUIDs.push(displayUUID);
                     }
                 }
             }
+            
+            console.log('Added table to model:', {
+                tableUUID,
+                displayUUID,
+                tableName,
+                modelObjectKeys: Object.keys(NModelViewer.state.modelData.ObjectJsons)
+            });
         }
         
         // Render the new table

@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>UUID Mapping Test</title>
+</head>
+<body>
+    <h1>UUID Mapping Test</h1>
+    <button onclick="testMapping()">Test UUID Mapping</button>
+    <pre id="output"></pre>
+    
+    <div style="display: none;">
+        <input type="file" id="file-input">
+        <svg id="diagram">
+            <g id="zoom-group">
+                <g id="relationships"></g>
+                <g id="tables"></g>
+            </g>
+        </svg>
+    </div>
+    
+    <script src="js/main.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/data-model.js"></script>
+    <script src="js/render-tables.js"></script>
+    <script src="js/render-relationships.js"></script>
+    <script src="js/interactions.js"></script>
+    <script src="js/foreign-keys.js"></script>
+    <script src="js/modals.js"></script>
+    <script src="js/export.js"></script>
+    
+    <script>
+        function log(msg) {
+            document.getElementById('output').textContent += msg + '\n';
+        }
+        
+        function testMapping() {
+            log('=== UUID Mapping Test ===\n');
+            
+            // Create a model with proper UUID structure
+            NModelViewer.state.modelData = {
+                ObjectJsons: {}
+            };
+            
+            // Create MVDiagram
+            const diagramUUID = 'diagram-uuid';
+            NModelViewer.state.modelData.ObjectJsons[diagramUUID] = [
+                {
+                    "_META_": true,
+                    "ObjectName": "Test Diagram",
+                    "ObjectTypeID": "MVDiagram",
+                    "ChildObjectUUIDs": ['display-users', 'display-posts']
+                },
+                { "layouts_here": [
+                    {
+                        "RefUUID": "display-users",
+                        "Name": "users",
+                        "Rect": { "X": 50, "Y": 50, "Width": 200, "Height": 150 }
+                    },
+                    {
+                        "RefUUID": "display-posts",
+                        "Name": "posts",
+                        "Rect": { "X": 300, "Y": 50, "Width": 200, "Height": 150 }
+                    }
+                ]}
+            ];
+            
+            // Create users table
+            const usersTableUUID = 'table-users-uuid';
+            NModelViewer.state.modelData.ObjectJsons[usersTableUUID] = [
+                {
+                    "_META_": true,
+                    "ObjectName": "users",
+                    "ObjectTypeID": "TableNormal_PGSQL"
+                },
+                {
+                    "TableCommon": {
+                        "Fields": [
+                            {"Name": "id", "Type": "INTEGER", "IsNull": "NO", "IsPrimary": true}
+                        ],
+                        "ForeignKeys": []
+                    }
+                }
+            ];
+            
+            // Create posts table with FK
+            const postsTableUUID = 'table-posts-uuid';
+            NModelViewer.state.modelData.ObjectJsons[postsTableUUID] = [
+                {
+                    "_META_": true,
+                    "ObjectName": "posts", 
+                    "ObjectTypeID": "TableNormal_PGSQL"
+                },
+                {
+                    "TableCommon": {
+                        "Fields": [
+                            {"Name": "id", "Type": "INTEGER", "IsNull": "NO", "IsPrimary": true},
+                            {"Name": "user_id", "Type": "INTEGER", "IsNull": "YES"}
+                        ],
+                        "ForeignKeys": [
+                            {
+                                "Name": "fk_posts_users",
+                                "Fields": ["user_id"],
+                                "ReferenceTable": "users",
+                                "ReferenceFields": ["id"]
+                            }
+                        ]
+                    }
+                }
+            ];
+            
+            // Create display objects
+            NModelViewer.state.modelData.ObjectJsons['display-users'] = [
+                {
+                    "_META_": true,
+                    "ObjectTypeID": "MVDiagramModelObject_Table"
+                },
+                {"RefUUID": usersTableUUID}
+            ];
+            
+            NModelViewer.state.modelData.ObjectJsons['display-posts'] = [
+                {
+                    "_META_": true,
+                    "ObjectTypeID": "MVDiagramModelObject_Table"
+                },
+                {"RefUUID": postsTableUUID}
+            ];
+            
+            log('Created test model');
+            log('- users table UUID: ' + usersTableUUID);
+            log('- posts table UUID: ' + postsTableUUID);
+            log('- posts has 1 foreign key to users\n');
+            
+            // Parse the model
+            log('Parsing model...');
+            NModelViewer.dataModel.parseAndRenderDiagram();
+            
+            log('\n=== After Parsing ===');
+            log('tablesMap keys: ' + Object.keys(NModelViewer.state.tablesMap).join(', '));
+            log('displayObjectsMap keys: ' + Object.keys(NModelViewer.state.displayObjectsMap).join(', '));
+            
+            // Check what's in tablesMap
+            for (const [uuid, table] of Object.entries(NModelViewer.state.tablesMap)) {
+                log(`\nTable at ${uuid}:`);
+                log(`  name: ${table.name}`);
+                log(`  fields: ${table.fields.length}`);
+                log(`  foreignKeys: ${table.foreignKeys ? table.foreignKeys.length : 0}`);
+                if (table.foreignKeys && table.foreignKeys.length > 0) {
+                    log('  FK details: ' + JSON.stringify(table.foreignKeys[0]));
+                }
+            }
+            
+            // Now save and check what happens
+            log('\n\n=== Saving Model ===');
+            
+            // Override the download to capture and analyze
+            const originalCreateElement = document.createElement;
+            let savedData = null;
+            
+            document.createElement = function(tagName) {
+                const elem = originalCreateElement.call(document, tagName);
+                if (tagName === 'a') {
+                    elem.click = function() {
+                        fetch(this.href)
+                            .then(response => response.text())
+                            .then(text => {
+                                savedData = JSON.parse(text);
+                                
+                                log('\n=== Saved Model Analysis ===');
+                                
+                                // Check if posts table has FK in saved model
+                                const savedPosts = savedData.ObjectJsons[postsTableUUID];
+                                if (savedPosts) {
+                                    const tableCommon = savedPosts.find(obj => obj.TableCommon);
+                                    if (tableCommon && tableCommon.TableCommon.ForeignKeys) {
+                                        log('SUCCESS: Posts table foreign keys preserved!');
+                                        log('Foreign keys: ' + JSON.stringify(tableCommon.TableCommon.ForeignKeys));
+                                    } else {
+                                        log('ERROR: No foreign keys in saved posts table!');
+                                    }
+                                } else {
+                                    log('ERROR: Posts table not found in saved model!');
+                                }
+                                
+                                // Show all ObjectJsons keys
+                                log('\nAll saved ObjectJsons keys:');
+                                for (const key of Object.keys(savedData.ObjectJsons)) {
+                                    log('  ' + key);
+                                }
+                            });
+                    };
+                }
+                return elem;
+            };
+            
+            NModelViewer.dataModel.saveModel();
+            document.createElement = originalCreateElement;
+        }
+    </script>
+</body>
+</html>

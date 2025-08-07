@@ -360,23 +360,122 @@ NModelViewer.foreignKeys = {
                 refUUID: fkUUID
             };
             
-            // Add the new foreign key to the model's child objects if we have model data
+            // Add the foreign key to the source table's schema
+            // Tables are stored by their display UUID, so use that directly
+            const tableSchema = NModelViewer.state.tablesMap[fkSourceField.tableUUID];
+            if (tableSchema) {
+                if (!tableSchema.foreignKeys) {
+                    tableSchema.foreignKeys = [];
+                }
+                
+                // Create the foreign key entry
+                const foreignKeyEntry = {
+                    "Name": fkName,
+                    "Fields": [fkSourceField.fieldName],
+                    "ReferenceSchema": "public",  // Default to public schema
+                    "ReferenceTable": fkTargetField.tableName,
+                    "ReferenceFields": [fkTargetField.fieldName],
+                    "OnDelete": "NO ACTION",
+                    "OnUpdate": "NO ACTION"
+                };
+                
+                tableSchema.foreignKeys.push(foreignKeyEntry);
+                console.log(`Added foreign key to table ${tableSchema.name}:`, foreignKeyEntry);
+                
+                // Update the table in the model if it exists
+                // Get the actual table UUID from the display object
+                const displayObj = NModelViewer.state.displayObjectsMap[fkSourceField.tableUUID];
+                if (displayObj && displayObj.refUUID && NModelViewer.state.modelData && 
+                    NModelViewer.state.modelData.ObjectJsons[displayObj.refUUID]) {
+                    const tableObjects = NModelViewer.state.modelData.ObjectJsons[displayObj.refUUID];
+                    const tableCommonObj = tableObjects.find(obj => obj.TableCommon);
+                    if (tableCommonObj) {
+                        tableCommonObj.TableCommon.ForeignKeys = tableSchema.foreignKeys;
+                        console.log(`Updated model foreign keys for table ${tableSchema.name}`);
+                    }
+                }
+            }
+            
+            // Initialize model data if needed
+            if (!NModelViewer.state.modelData) {
+                // Initialize minimal model data structure if not loaded
+                NModelViewer.state.modelData = {
+                    ObjectJsons: {},
+                    MVDiagramData: {}
+                };
+                
+                // Create an MVDiagram
+                const diagramUUID = NModelViewer.utils.generateUUID();
+                NModelViewer.state.modelData.ObjectJsons[diagramUUID] = [
+                    {
+                        "_META_": true,
+                        "_VERSION_": "",
+                        "ObjectName": "Data Model Diagram",
+                        "ObjectTypeID": "MVDiagram",
+                        "ObjectTypeDisplayName": "MVDiagram",
+                        "ObjectVersion": "17.0.0001",
+                        "ChildObjectUUIDs": []
+                    },
+                    {
+                        "PaperSize": NModelViewer.state.diagramInfo.paperSize || { Width: 850, Height: 1100 },
+                        "PagesSize": NModelViewer.state.diagramInfo.pagesSize || { Width: 4, Height: 3 }
+                    }
+                ];
+                NModelViewer.state.mvDiagramUUID = diagramUUID;
+                console.log('Created new MVDiagram with UUID:', diagramUUID);
+            }
+            
+            // Add the new foreign key to the model's ObjectJsons immediately
             if (NModelViewer.state.modelData) {
-                // Find the MVDiagram object and add to its ChildObjectUUIDs
-                for (const [uuid, objects] of Object.entries(NModelViewer.state.modelData.ObjectJsons)) {
-                    if (Array.isArray(objects)) {
-                        const metaObj = objects.find(obj => obj._META_ && obj.ObjectTypeID === 'MVDiagram');
-                        if (metaObj) {
-                            if (!metaObj.ChildObjectUUIDs) {
-                                metaObj.ChildObjectUUIDs = [];
-                            }
-                            if (!metaObj.ChildObjectUUIDs.includes(displayUUID)) {
-                                metaObj.ChildObjectUUIDs.push(displayUUID);
-                            }
-                            break;
+                // Create the relationship object in the model
+                NModelViewer.state.modelData.ObjectJsons[displayUUID] = [
+                    {
+                        "_META_": true,
+                        "_VERSION_": "",
+                        "ObjectName": fkName,
+                        "ObjectTypeID": "MVDiagramShape_Relation",
+                        "ObjectTypeDisplayName": "MVDiagramShape_Relation",
+                        "ObjectVersion": "17.0.0000"
+                    },
+                    {
+                        "LineCommon": {
+                            "Vertices": relationshipData.vertices || [],
+                            "ConnectInfos": relationshipData.connectInfos || []
+                        }
+                    },
+                    {
+                        "ConnectorCommon": relationshipData.connectorCommon || {
+                            "Type": "Elbow",
+                            "StartAxis": "Horizontal"
+                        }
+                    },
+                    {
+                        "ArrowCommon": relationshipData.arrowCommon || {
+                            "BeginStyle": "None",
+                            "EndStyle": "None"
+                        }
+                    }
+                ];
+                
+                // Find the MVDiagram and add to its ChildObjectUUIDs
+                if (NModelViewer.state.mvDiagramUUID && NModelViewer.state.modelData.ObjectJsons[NModelViewer.state.mvDiagramUUID]) {
+                    const mvDiagramData = NModelViewer.state.modelData.ObjectJsons[NModelViewer.state.mvDiagramUUID];
+                    const metaObj = mvDiagramData.find(obj => obj._META_);
+                    if (metaObj) {
+                        if (!metaObj.ChildObjectUUIDs) {
+                            metaObj.ChildObjectUUIDs = [];
+                        }
+                        if (!metaObj.ChildObjectUUIDs.includes(displayUUID)) {
+                            metaObj.ChildObjectUUIDs.push(displayUUID);
                         }
                     }
                 }
+                
+                console.log('Added foreign key to model:', {
+                    displayUUID,
+                    fkName,
+                    modelObjectKeys: Object.keys(NModelViewer.state.modelData.ObjectJsons)
+                });
             }
             
             // Instead of rendering with bad vertices, create the relationship element directly
@@ -484,6 +583,15 @@ NModelViewer.foreignKeys = {
             console.error('Error creating foreign key:', error);
             alert('Error creating foreign key: ' + error.message);
         }
+    },
+    
+    // Helper function to find table UUID from display UUID
+    findTableUUIDByDisplayUUID: function(displayUUID) {
+        const displayObj = NModelViewer.state.displayObjectsMap[displayUUID];
+        if (displayObj && displayObj.refUUID) {
+            return displayObj.refUUID;
+        }
+        return null;
     }
 };
 

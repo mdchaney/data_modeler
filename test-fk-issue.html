@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Foreign Key Issue</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            padding: 20px;
+        }
+        .section {
+            margin-bottom: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .success {
+            color: green;
+        }
+        .error {
+            color: red;
+        }
+        .info {
+            color: blue;
+        }
+        pre {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test Foreign Key Preservation Issue</h1>
+    
+    <div class="section">
+        <h2>Instructions</h2>
+        <ol>
+            <li>Open the main application (index.html) in another tab</li>
+            <li>Load the streaming_chasers.nmodel file</li>
+            <li>Come back to this tab and run the tests</li>
+            <li>The tests will verify if foreign keys are preserved when saving</li>
+        </ol>
+    </div>
+    
+    <div class="section">
+        <h2>Test Controls</h2>
+        <button onclick="runLoadTest()">1. Test Load Analysis</button>
+        <button onclick="runSaveTest()">2. Test Save Process</button>
+        <button onclick="runFullTest()">3. Run Full Test</button>
+    </div>
+    
+    <div class="section">
+        <h2>Test Results</h2>
+        <div id="results"></div>
+    </div>
+    
+    <script>
+        const resultsDiv = document.getElementById('results');
+        
+        function log(message, type = 'info') {
+            const p = document.createElement('p');
+            p.className = type;
+            p.textContent = message;
+            resultsDiv.appendChild(p);
+        }
+        
+        function clearResults() {
+            resultsDiv.innerHTML = '';
+        }
+        
+        function runLoadTest() {
+            clearResults();
+            log('=== LOAD TEST STARTED ===');
+            
+            // Access the parent window's NModelViewer
+            const NModelViewer = window.opener?.NModelViewer;
+            if (!NModelViewer) {
+                log('ERROR: Cannot access NModelViewer. Make sure the main app is open.', 'error');
+                return;
+            }
+            
+            // Check loaded data
+            log('\n1. CHECKING LOADED DATA:');
+            log(`Tables in tablesMap: ${Object.keys(NModelViewer.state.tablesMap).length}`);
+            
+            // Count foreign keys in tablesMap
+            let totalFKsInTablesMap = 0;
+            for (const [uuid, table] of Object.entries(NModelViewer.state.tablesMap)) {
+                if (table.foreignKeys && table.foreignKeys.length > 0) {
+                    log(`Table ${table.name} (${uuid}) has ${table.foreignKeys.length} foreign keys`, 'success');
+                    totalFKsInTablesMap += table.foreignKeys.length;
+                }
+            }
+            log(`Total foreign keys in tablesMap: ${totalFKsInTablesMap}`, 'info');
+            
+            // Check model data
+            log('\n2. CHECKING MODEL DATA:');
+            let totalFKsInModel = 0;
+            for (const [uuid, objects] of Object.entries(NModelViewer.state.modelData.ObjectJsons)) {
+                if (Array.isArray(objects)) {
+                    const metaObj = objects.find(obj => obj._META_);
+                    const tableCommon = objects.find(obj => obj.TableCommon);
+                    if (metaObj && metaObj.ObjectTypeID === 'TableNormal_PGSQL' && tableCommon) {
+                        if (tableCommon.TableCommon.ForeignKeys && tableCommon.TableCommon.ForeignKeys.length > 0) {
+                            log(`Table ${metaObj.ObjectName} at UUID ${uuid} has ${tableCommon.TableCommon.ForeignKeys.length} foreign keys`, 'success');
+                            totalFKsInModel += tableCommon.TableCommon.ForeignKeys.length;
+                        }
+                    }
+                }
+            }
+            log(`Total foreign keys in model: ${totalFKsInModel}`, 'info');
+            
+            log('\n=== LOAD TEST COMPLETED ===', 'success');
+        }
+        
+        function runSaveTest() {
+            clearResults();
+            log('=== SAVE TEST STARTED ===');
+            
+            const NModelViewer = window.opener?.NModelViewer;
+            if (!NModelViewer) {
+                log('ERROR: Cannot access NModelViewer. Make sure the main app is open.', 'error');
+                return;
+            }
+            
+            // Count FKs before save
+            let fksBefore = 0;
+            for (const [uuid, table] of Object.entries(NModelViewer.state.tablesMap)) {
+                if (table.foreignKeys && table.foreignKeys.length > 0) {
+                    fksBefore += table.foreignKeys.length;
+                }
+            }
+            log(`Foreign keys in tablesMap before save: ${fksBefore}`);
+            
+            // Trigger the updateModelPositions function
+            log('\nRunning updateModelPositions...');
+            NModelViewer.dataModel.updateModelPositions();
+            
+            // Count FKs after update
+            let fksAfter = 0;
+            for (const [uuid, objects] of Object.entries(NModelViewer.state.modelData.ObjectJsons)) {
+                if (Array.isArray(objects)) {
+                    const tableCommon = objects.find(obj => obj.TableCommon);
+                    if (tableCommon && tableCommon.TableCommon.ForeignKeys && tableCommon.TableCommon.ForeignKeys.length > 0) {
+                        fksAfter += tableCommon.TableCommon.ForeignKeys.length;
+                    }
+                }
+            }
+            log(`Foreign keys in model after update: ${fksAfter}`);
+            
+            if (fksAfter === fksBefore) {
+                log('\n✓ SUCCESS: All foreign keys preserved!', 'success');
+            } else {
+                log(`\n✗ ERROR: Foreign keys lost! Before: ${fksBefore}, After: ${fksAfter}`, 'error');
+            }
+            
+            log('\n=== SAVE TEST COMPLETED ===', 'success');
+        }
+        
+        function runFullTest() {
+            clearResults();
+            log('=== FULL TEST STARTED ===');
+            
+            const NModelViewer = window.opener?.NModelViewer;
+            if (!NModelViewer) {
+                log('ERROR: Cannot access NModelViewer. Make sure the main app is open.', 'error');
+                return;
+            }
+            
+            // Save current state
+            const originalModelData = JSON.stringify(NModelViewer.state.modelData);
+            
+            // Run save process
+            log('Simulating full save process...');
+            NModelViewer.dataModel.saveModel();
+            
+            // Check if model data changed
+            const newModelData = JSON.stringify(NModelViewer.state.modelData);
+            if (originalModelData !== newModelData) {
+                log('Model data was modified during save', 'info');
+            }
+            
+            // Count foreign keys in the saved JSON
+            const fkMatches = newModelData.match(/"ForeignKeys"\s*:\s*\[[^\]]+\]/g);
+            const nonEmptyFKs = fkMatches ? fkMatches.filter(match => !match.includes('[]')).length : 0;
+            
+            log(`\nForeign key arrays with data in saved JSON: ${nonEmptyFKs}`);
+            
+            log('\n=== FULL TEST COMPLETED ===', 'success');
+            log('Check your Downloads folder for the saved file and verify it contains foreign keys.');
+        }
+    </script>
+</body>
+</html>

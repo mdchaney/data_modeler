@@ -93,9 +93,10 @@ NModelViewer.rendering = {
             const displayObj = NModelViewer.state.displayObjectsMap[uuid];
             console.log(`Checking UUID ${uuid}:`, displayObj);
             
-            if (displayObj && !displayObj.name.startsWith('fk_')) {
+            if (displayObj && displayObj.type === 'table') {
                 // This is a table display object
-                const tableSchema = NModelViewer.state.tablesMap[displayObj.refUUID];
+                // Tables are stored by display UUID, not ref UUID
+                const tableSchema = NModelViewer.state.tablesMap[uuid];
                 const layout = layoutInfo[uuid];
                 
                 console.log(`  Table Schema:`, tableSchema?.name);
@@ -112,8 +113,10 @@ NModelViewer.rendering = {
         
         // Then render foreign key relationships
         childObjectUUIDs.forEach(uuid => {
+            const displayObj = NModelViewer.state.displayObjectsMap[uuid];
             const layout = layoutInfo[uuid];
-            if (layout && layout.name && layout.name.startsWith('fk_')) {
+            
+            if (displayObj && displayObj.type === 'relation' && layout) {
                 // This is a foreign key relationship
                 // Find the actual relationship data
                 const relationData = NModelViewer.dataModel.findRelationshipData(uuid);
@@ -121,7 +124,7 @@ NModelViewer.rendering = {
                     // Store relationship data
                     NModelViewer.state.relationshipsMap[uuid] = {
                         uuid: uuid,
-                        name: layout.name,
+                        name: displayObj.name,
                         data: relationData,
                         layout: layout
                     };
@@ -137,7 +140,7 @@ NModelViewer.rendering = {
                     }
                     
                     if (NModelViewer.relationships && NModelViewer.relationships.renderRelationship) {
-                        NModelViewer.relationships.renderRelationship(uuid, layout.name, relationData);
+                        NModelViewer.relationships.renderRelationship(uuid, displayObj.name, relationData);
                     }
                 }
             }
