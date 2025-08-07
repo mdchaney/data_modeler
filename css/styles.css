@@ -29,15 +29,20 @@ body {
     display: flex;
     flex-direction: column;
     border-bottom: 1px solid #ddd;
+    min-height: 0; /* Important for Firefox flex overflow */
 }
 
 .sidebar-section.object-list {
     flex: 0 0 50%;
+    max-height: 50vh;
+    overflow: hidden;
 }
 
 .sidebar-section.object-details {
     flex: 0 0 50%;
+    max-height: 50vh;
     border-bottom: none;
+    overflow: hidden;
 }
 
 .sidebar-header {
@@ -51,7 +56,9 @@ body {
 .sidebar-content {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 10px;
+    min-height: 0; /* Important for flex overflow to work */
 }
 
 /* Object list items */
