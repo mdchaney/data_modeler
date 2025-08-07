@@ -138,7 +138,13 @@ NModelViewer.relationships = {
         clickPath.style.cursor = 'pointer';
         
         // Add click handler
-        clickPath.addEventListener('click', () => this.showRelationshipInfo(uuid, name, relData));
+        clickPath.addEventListener('click', () => {
+            this.showRelationshipInfo(uuid, name, relData);
+            // Also select in sidebar
+            if (NModelViewer.sidebar) {
+                NModelViewer.sidebar.selectObject(uuid, 'foreign-key');
+            }
+        });
         
         g.appendChild(clickPath);
         g.appendChild(path);

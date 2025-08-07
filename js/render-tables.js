@@ -326,7 +326,11 @@ NModelViewer.rendering = {
         g.addEventListener('click', (e) => {
             // Only show info if not clicking on a resize handle
             if (!e.target.classList.contains('resize-handle')) {
-                this.showTableInfo(uuid, table);
+                if (NModelViewer.interactions) {
+                    NModelViewer.interactions.showTableInfo(uuid);
+                } else {
+                    this.showTableInfo(uuid, table);
+                }
             }
         });
         

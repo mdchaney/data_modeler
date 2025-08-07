@@ -7,10 +7,34 @@
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-    <div class="container">
-        <h1>Data Model Viewer</h1>
+    <div class="main-layout">
+        <!-- Left Sidebar -->
+        <div class="left-sidebar">
+            <!-- Object List Section -->
+            <div class="sidebar-section object-list">
+                <div class="sidebar-header">Objects</div>
+                <div class="sidebar-content" id="object-list-content">
+                    <!-- Tables and foreign keys will be populated here -->
+                </div>
+            </div>
+            
+            <!-- Object Details Section -->
+            <div class="sidebar-section object-details">
+                <div class="sidebar-header">Details</div>
+                <div class="sidebar-content" id="object-details-content">
+                    <div style="color: #999; text-align: center; padding: 20px;">
+                        Select an object to view details
+                    </div>
+                </div>
+            </div>
+        </div>
         
-        <div class="controls">
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <div class="container">
+                <h1>Data Model Viewer</h1>
+                
+                <div class="controls">
             <input type="file" id="file-input" accept=".nmodel">
             <button onclick="loadFile()">Load Model</button>
             <button onclick="saveModel()">Save Model</button>
@@ -60,9 +84,11 @@
         
         <div id="debug-info" class="debug-info"></div>
         
-        <div id="info-panel">
-            <h3>Table Information</h3>
-            <div id="info-content"></div>
+                <div id="info-panel">
+                    <h3>Table Information</h3>
+                    <div id="info-content"></div>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -133,5 +159,6 @@
     <script src="js/foreign-keys.js"></script>
     <script src="js/modals.js"></script>
     <script src="js/export.js"></script>
+    <script src="js/sidebar.js"></script>
 </body>
 </html>

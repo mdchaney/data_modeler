@@ -294,6 +294,17 @@ NModelViewer.interactions = {
         });
     },
     
+    // Show table info (called from click handler)
+    showTableInfo: function(uuid) {
+        const table = NModelViewer.state.tablesMap[uuid];
+        if (!table) return;
+        
+        // Just select in sidebar - the sidebar will show the details
+        if (NModelViewer.sidebar) {
+            NModelViewer.sidebar.selectObject(uuid, 'table');
+        }
+    },
+    
     // Recalculate relationship path when tables move
     recalculateRelationshipPath: function(relUUID, relData) {
         if (!relData.data.vertices || relData.data.vertices.length < 2) return null;
