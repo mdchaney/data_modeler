@@ -46,28 +46,31 @@ body {
 }
 
 .sidebar-header {
-    padding: 15px;
+    padding: 10px;
     background: #f8f9fa;
     border-bottom: 1px solid #ddd;
     font-weight: bold;
-    font-size: 14px;
+    font-size: 12px;
 }
 
 .sidebar-content {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 10px;
+    padding: 5px;
     min-height: 0; /* Important for flex overflow to work */
 }
 
 /* Object list items */
 .object-list-item {
-    padding: 8px 12px;
+    padding: 4px 8px;
     cursor: pointer;
     border-radius: 4px;
-    margin-bottom: 2px;
-    font-size: 13px;
+    margin-bottom: 1px;
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .object-list-item:hover {

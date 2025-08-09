@@ -38,7 +38,7 @@ NModelViewer.sidebar = {
         // Add section for tables
         if (tables.length > 0) {
             const tablesHeader = document.createElement('div');
-            tablesHeader.style.cssText = 'font-weight: bold; margin: 10px 0 5px 0; color: #666; font-size: 12px; text-transform: uppercase;';
+            tablesHeader.style.cssText = 'font-weight: bold; margin: 5px 0 3px 0; color: #666; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;';
             tablesHeader.textContent = 'Tables';
             listContent.appendChild(tablesHeader);
             
@@ -60,7 +60,7 @@ NModelViewer.sidebar = {
         // Add section for foreign keys
         if (foreignKeys.length > 0) {
             const fkHeader = document.createElement('div');
-            fkHeader.style.cssText = 'font-weight: bold; margin: 20px 0 5px 0; color: #666; font-size: 12px; text-transform: uppercase;';
+            fkHeader.style.cssText = 'font-weight: bold; margin: 10px 0 3px 0; color: #666; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;';
             fkHeader.textContent = 'Foreign Keys';
             listContent.appendChild(fkHeader);
             
